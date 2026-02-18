@@ -19,16 +19,20 @@
       min-height: 100vh;
       -webkit-tap-highlight-color: transparent;
     }
-    
+
     .container {
       max-width: 1200px;
       margin: 0 auto;
     }
-    
+
     .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       margin-bottom: 30px;
     }
-    
+    .header-left { text-align: left; }
+
     .header h1 {
       font-size: 2.5em;
       background: linear-gradient(45deg, #4ecdc4, #44a08d);
@@ -37,20 +41,20 @@
       background-clip: text;
       margin: 0;
     }
-    
+
     .subtitle {
       color: #888;
       font-size: 1.1em;
       margin: 10px 0;
     }
-    
+
     .main-content {
       display: grid;
       grid-template-columns: 1fr 500px;
       gap: 30px;
       align-items: start;
     }
-    
+
     .controls-panel {
       background: rgba(255,255,255,0.05);
       border-radius: 15px;
@@ -58,7 +62,7 @@
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255,255,255,0.1);
     }
-    
+
     .groove-display {
       width: 500px;
       height: 500px;
@@ -72,7 +76,7 @@
       display: block;
       border-radius: 50%;
     }
-    
+
     .upload-area {
       border: 2px dashed #4ecdc4;
       border-radius: 12px;
@@ -81,18 +85,18 @@
       cursor: pointer;
       transition: all 0.3s ease;
     }
-    
+
     .upload-area:hover {
       background: rgba(78, 205, 196, 0.1);
       border-color: #44a08d;
     }
-    
+
     .upload-area.dragover {
       background: rgba(78, 205, 196, 0.2);
       border-color: #4ecdc4;
       transform: scale(1.02);
     }
-    
+
     .btn {
       background: linear-gradient(45deg, #4ecdc4, #44a08d);
       border: none;
@@ -105,30 +109,32 @@
       transition: all 0.3s ease;
       font-size: 16px;
       touch-action: manipulation;
+      display: inline-block;
+      text-decoration: none;
     }
-    
+
     .btn:hover:not(:disabled) {
       transform: translateY(-2px);
       box-shadow: 0 5px 15px rgba(78, 205, 196, 0.4);
     }
-    
+
     .btn:active:not(:disabled) {
       transform: translateY(0);
     }
-    
+
     .btn:disabled {
       background: #666;
       cursor: not-allowed;
       transform: none;
       box-shadow: none;
     }
-    
+
     .btn.loading {
       background: #888;
       position: relative;
       overflow: hidden;
     }
-    
+
     .btn.loading::after {
       content: '';
       position: absolute;
@@ -139,37 +145,60 @@
       background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
       animation: loading 1.5s infinite;
     }
-    
+
     @keyframes loading {
       0% { left: -50%; }
       100% { left: 100%; }
     }
-    
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .btn-secondary:hover:not(:disabled) {
+      background: rgba(255,255,255,0.15);
+      box-shadow: none;
+    }
+
+    .btn-danger {
+      background: linear-gradient(45deg, #e74c3c, #c0392b);
+    }
+    .btn-danger:hover:not(:disabled) {
+      box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+    }
+
+    .btn-sm {
+      padding: 6px 14px;
+      font-size: 13px;
+      margin: 4px;
+      border-radius: 15px;
+    }
+
     .status {
       margin: 15px 0;
       padding: 10px;
       border-radius: 8px;
       font-weight: 500;
     }
-    
+
     .status.success {
       background: rgba(78, 205, 196, 0.2);
       color: #4ecdc4;
       border: 1px solid rgba(78, 205, 196, 0.3);
     }
-    
+
     .status.error {
       background: rgba(255, 68, 68, 0.2);
       color: #ff4444;
       border: 1px solid rgba(255, 68, 68, 0.3);
     }
-    
+
     .status.info {
       background: rgba(255, 193, 7, 0.2);
       color: #ffc107;
       border: 1px solid rgba(255, 193, 7, 0.3);
     }
-    
+
     .controls-section {
       margin: 20px 0;
       padding: 15px;
@@ -177,26 +206,26 @@
       border-radius: 10px;
       border-left: 4px solid #4ecdc4;
     }
-    
+
     .controls-section h3 {
       margin: 0 0 15px 0;
       color: #4ecdc4;
       font-size: 1.1em;
     }
-    
+
     .control-group {
       display: flex;
       align-items: center;
       justify-content: space-between;
       margin: 10px 0;
     }
-    
+
     .control-group label {
       color: #ddd;
       font-weight: 500;
       white-space: nowrap;
     }
-    
+
     .control-group input[type="range"] {
       flex: 1;
       min-width: 80px;
@@ -205,14 +234,14 @@
       height: 28px;
       cursor: pointer;
     }
-    
+
     .control-group .value {
       color: #4ecdc4;
       font-weight: 600;
       min-width: 40px;
       text-align: right;
     }
-    
+
     .playback-controls {
       display: flex;
       align-items: center;
@@ -220,7 +249,7 @@
       gap: 10px;
       margin: 20px 0;
     }
-    
+
     .time-display {
       font-family: 'Courier New', monospace;
       font-size: 1.2em;
@@ -230,7 +259,7 @@
       background: rgba(0,0,0,0.3);
       border-radius: 8px;
     }
-    
+
     .debug {
       background: rgba(0,0,0,0.8);
       color: #4ecdc4;
@@ -244,12 +273,11 @@
       overflow-y: auto;
       border: 1px solid #333;
     }
-    
-    
+
     input[type="file"] {
       display: none;
     }
-    
+
     .audio-info {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -257,23 +285,231 @@
       margin: 15px 0;
       font-size: 14px;
     }
-    
+
     .audio-info .info-item {
       background: rgba(0,0,0,0.3);
       padding: 8px;
       border-radius: 6px;
       text-align: center;
     }
-    
+
     .audio-info .info-label {
       color: #888;
       font-size: 12px;
       margin-bottom: 4px;
     }
-    
+
     .audio-info .info-value {
       color: #4ecdc4;
       font-weight: 600;
+    }
+
+    /* ── Landing ── */
+    #landing {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    #landing h1 {
+      font-size: 3em;
+      background: linear-gradient(45deg, #4ecdc4, #44a08d);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin: 0 0 12px;
+    }
+    #landing .landing-subtitle {
+      color: #888;
+      font-size: 1.1em;
+      margin-bottom: 48px;
+    }
+    #landing .btn-connect {
+      padding: 16px 36px;
+      font-size: 1.1em;
+      background: linear-gradient(45deg, #4ecdc4, #44a08d);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      transition: opacity 0.2s;
+    }
+    #landing .btn-connect:hover:not(:disabled) { opacity: 0.85; }
+    #landing .btn-connect:disabled { opacity: 0.5; cursor: not-allowed; }
+    #landing .landing-note {
+      margin-top: 20px;
+      color: #555;
+      font-size: 0.85em;
+    }
+    #landing .landing-error {
+      margin-top: 16px;
+      color: #ff6b6b;
+      font-size: 0.9em;
+      max-width: 360px;
+      text-align: center;
+    }
+
+    /* ── Gallery ── */
+    #gallery {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    #gallery .gallery-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    #gallery .gallery-header h1 {
+      font-size: 2em;
+      background: linear-gradient(45deg, #4ecdc4, #44a08d);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin: 0 0 4px;
+    }
+    .gallery-user {
+      text-align: right;
+    }
+    .gallery-address {
+      font-family: 'Courier New', monospace;
+      font-size: 0.85em;
+      color: #4ecdc4;
+      margin-bottom: 8px;
+    }
+    .gallery-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+    .groove-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 20px;
+    }
+    .groove-card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: left;
+      position: relative;
+    }
+    .groove-card:hover {
+      background: rgba(78, 205, 196, 0.08);
+      border-color: rgba(78, 205, 196, 0.3);
+      transform: translateY(-2px);
+    }
+    .groove-card-preview {
+      width: 100%;
+      aspect-ratio: 1;
+      margin-bottom: 12px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #0a0d11;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .groove-card-preview svg {
+      width: 100%;
+      height: 100%;
+    }
+    .groove-card-name {
+      font-weight: 600;
+      font-size: 0.95em;
+      margin-bottom: 4px;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .groove-card-date {
+      font-size: 0.8em;
+      color: #666;
+    }
+    .groove-card-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 10px;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: #555;
+    }
+    .empty-state .empty-icon {
+      font-size: 4em;
+      margin-bottom: 16px;
+    }
+    .empty-state p {
+      font-size: 1.1em;
+      margin: 0 0 24px;
+    }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: rgba(78, 205, 196, 0.95);
+      color: #0a0d11;
+      padding: 12px 28px;
+      border-radius: 25px;
+      font-weight: 600;
+      font-size: 0.95em;
+      opacity: 0;
+      transition: opacity 0.3s, transform 0.3s;
+      pointer-events: none;
+      z-index: 9999;
+    }
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ── Editor header additions ── */
+    .btn-wallet {
+      padding: 10px 20px;
+      font-size: 0.9em;
+      white-space: nowrap;
+    }
+    .btn-wallet.connected {
+      background: linear-gradient(45deg, #44a08d, #2d6a5a);
+    }
+    .wallet-address {
+      font-size: 0.75em;
+      opacity: 0.8;
+      display: block;
+      margin-top: 2px;
+    }
+    .editor-nav {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .groove-name-display {
+      color: #4ecdc4;
+      font-size: 0.9em;
+      font-style: italic;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     @media (max-width: 1024px) {
@@ -281,7 +517,7 @@
         grid-template-columns: 1fr;
         gap: 20px;
       }
-      
+
       .groove-display {
         width: min(400px, calc(100vw - 50px));
         height: min(400px, calc(100vw - 50px));
@@ -370,95 +606,62 @@
         margin: 10px 0;
       }
     }
-
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 30px;
-    }
-    .header-left { text-align: left; }
-
-    .btn-wallet {
-      padding: 10px 20px;
-      font-size: 0.9em;
-      white-space: nowrap;
-    }
-    .btn-wallet.connected {
-      background: linear-gradient(45deg, #44a08d, #2d6a5a);
-    }
-    .wallet-address {
-      font-size: 0.75em;
-      opacity: 0.8;
-      display: block;
-      margin-top: 2px;
-    }
-
-    /* Landing / auth gate */
-    #landing {
-      position: fixed;
-      inset: 0;
-      background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-    }
-    #landing h1 {
-      font-size: 3em;
-      background: linear-gradient(45deg, #4ecdc4, #44a08d);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      margin: 0 0 12px;
-    }
-    #landing .landing-subtitle {
-      color: #888;
-      font-size: 1.1em;
-      margin-bottom: 48px;
-    }
-    #landing .btn-connect {
-      padding: 16px 36px;
-      font-size: 1.1em;
-      background: linear-gradient(45deg, #4ecdc4, #44a08d);
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-family: inherit;
-      font-weight: 600;
-      letter-spacing: 0.02em;
-      transition: opacity 0.2s;
-    }
-    #landing .btn-connect:hover { opacity: 0.85; }
-    #landing .landing-note {
-      margin-top: 20px;
-      color: #555;
-      font-size: 0.85em;
-    }
 </style>
 </head>
 <body>
 
+<!-- ── Toast ── -->
+<div id="toast"></div>
+
+<!-- ── Landing ── -->
 <div id="landing">
   <h1>Visual Audio Groove Codec</h1>
   <div class="landing-subtitle">Transform audio into visual grooves</div>
   <button class="btn-connect" id="landingConnectBtn">Connect Wallet to Enter</button>
   <div class="landing-note">Requires a Stacks wallet (Leather, Xverse, etc.)</div>
+  <div class="landing-error" id="landingError" style="display:none"></div>
 </div>
 
-<div class="container" id="appContainer">
+<!-- ── Gallery ── -->
+<div id="gallery" style="display:none">
+  <div class="gallery-header">
+    <div>
+      <h1>Visual Audio Groove Codec</h1>
+      <div class="subtitle">Your Groove Library</div>
+    </div>
+    <div class="gallery-user">
+      <div class="gallery-address" id="galleryAddress"></div>
+      <button class="btn btn-secondary btn-sm" id="signOutBtn">Sign Out</button>
+    </div>
+  </div>
+
+  <div class="gallery-toolbar">
+    <button class="btn" id="newGrooveBtn">&#43; New Groove</button>
+    <label class="btn btn-secondary" for="galleryUploadSvg" style="cursor:pointer">Upload SVG</label>
+    <input type="file" id="galleryUploadSvg" accept=".svg,image/svg+xml">
+  </div>
+
+  <div class="groove-grid" id="grooveGrid"></div>
+  <div class="empty-state" id="emptyState" style="display:none">
+    <div class="empty-icon">&#127925;</div>
+    <p>No grooves yet &mdash; create your first one</p>
+    <button class="btn" id="emptyNewGrooveBtn">&#43; New Groove</button>
+  </div>
+</div>
+
+<!-- ── Editor ── -->
+<div class="container" id="appContainer" style="display:none">
   <div class="header">
     <div class="header-left">
       <h1>Visual Audio Groove Codec</h1>
-      <div class="subtitle">Transform audio into visual grooves &bull; Load & play existing grooves</div>
+      <div class="subtitle">Transform audio into visual grooves &bull; Load &amp; play existing grooves</div>
     </div>
-    <div class="wallet-area">
-      <button class="btn btn-wallet" id="walletBtn">Connect Wallet</button>
+    <div class="editor-nav">
+      <span class="groove-name-display" id="editorGrooveName"></span>
+      <button class="btn btn-secondary btn-sm" id="backToGalleryBtn">&#8592; Gallery</button>
     </div>
   </div>
-  
+
   <div class="main-content">
     <div class="controls-panel">
       <div class="controls-section">
@@ -469,18 +672,18 @@
           <div style="color: #888; font-size: 14px;">or click to browse</div>
           <input type="file" id="audioFile" accept="audio/*">
         </div>
-        
+
         <div class="upload-area" id="svgUploadArea" style="margin-top: 15px; border-color: #da70d6; background: rgba(218, 112, 214, 0.05);">
           <div style="font-size: 2em; margin-bottom: 10px;">&#127744;</div>
           <div style="font-weight: 600; margin-bottom: 5px; color: #da70d6;">Drop visual groove SVG here</div>
           <div style="color: #888; font-size: 14px;">or click to load existing groove</div>
           <input type="file" id="svgFile" accept=".svg,image/svg+xml">
         </div>
-        
+
         <div class="status info" id="audioStatus">
           No audio loaded
         </div>
-        
+
         <div class="audio-info" id="audioInfo" style="display: none;">
           <div class="info-item">
             <div class="info-label">Duration</div>
@@ -500,7 +703,7 @@
           </div>
         </div>
       </div>
-      
+
       <div class="controls-section">
         <h3>Groove Settings</h3>
         <div class="control-group">
@@ -519,35 +722,36 @@
           <span class="value" id="sensitivityValue">5</span>
         </div>
       </div>
-      
+
       <div class="controls-section">
         <h3>Actions</h3>
         <button class="btn" id="generateGroove" disabled>Generate Visual Groove</button>
-        <button class="btn" id="downloadSVG" disabled>Download SVG</button>
-        <button class="btn" id="downloadAudio" disabled>Export Audio</button>
-        
+        <button class="btn" id="saveGrooveBtn" disabled>Save to Library</button>
+        <button class="btn btn-secondary" id="downloadSVG" disabled>Download SVG</button>
+        <button class="btn btn-secondary" id="downloadAudio" disabled>Export Audio</button>
+
         <div class="playback-controls">
           <button class="btn" id="playBtn" disabled>Play Groove</button>
           <button class="btn" id="pauseBtn" disabled style="display: none;">Pause</button>
         </div>
-        
+
         <div class="control-group">
           <label>Playback Speed:</label>
           <input type="range" id="speedSlider" min="0.25" max="2" value="1" step="0.25">
           <span class="value" id="speedValue">1.0x</span>
         </div>
       </div>
-      
+
       <div class="time-display">
         <span id="currentTime">00:00</span> / <span id="totalTime">00:00</span>
       </div>
     </div>
-    
+
     <div class="groove-display" id="grooveDisplay">
       <canvas id="grooveCanvas" width="1000" height="1000"></canvas>
     </div>
   </div>
-  
+
   <div class="debug" id="debugLog">
     Visual Audio Groove Codec ready<br>
     &rarr; Upload audio to create new visual groove<br>
@@ -764,36 +968,41 @@ class GrooveCodec {
 
     try {
       const svgText = await file.text();
-      const result = this.decodeFromSVG(svgText);
-
-      this.grooveSVG = svgText;
-      this.decodedAudio = result.samples;
-      this.sampleRate = result.sampleRate;
-      this.duration = result.samples.length / result.sampleRate;
-      this.spiralTurns = result.turns;
-      this.Rout = result.Rout;
-      this.Rin = result.Rin;
-      this.cx = result.cx;
-      this.cy = result.cy;
-      this.originalAudio = null;
-      this.groovePoints = result.groovePoints;
-
-      this.setStatus(`Visual groove loaded: ${file.name}`, 'success');
-      this.updateGrooveInfo(file, result);
-      this.renderGroove();
-      this.enablePlaybackControls();
+      this.loadGrooveFromText(svgText);
 
       const genBtn = document.getElementById('generateGroove');
       genBtn.textContent = 'Groove Loaded (Generate New)';
       genBtn.disabled = false;
 
-      this.debug(`Groove loaded: ${result.vertices} vertices, ${result.turns.toFixed(1)} turns, ${this.duration.toFixed(2)}s`);
-      this.debug('Ready for playback from visual groove!');
+      this.debug(`Groove loaded from file: ${file.name}`);
     } catch (error) {
       this.debug(`Failed to load groove: ${error.message}`);
       this.setStatus('Failed to load visual groove file', 'error');
       console.error('Groove loading error:', error);
     }
+  }
+
+  loadGrooveFromText(svgText, nameHint) {
+    const result = this.decodeFromSVG(svgText);
+
+    this.grooveSVG = svgText;
+    this.decodedAudio = result.samples;
+    this.sampleRate = result.sampleRate;
+    this.duration = result.samples.length / result.sampleRate;
+    this.spiralTurns = result.turns;
+    this.Rout = result.Rout;
+    this.Rin = result.Rin;
+    this.cx = result.cx;
+    this.cy = result.cy;
+    this.originalAudio = null;
+    this.groovePoints = result.groovePoints;
+
+    this.renderGroove();
+    this.enablePlaybackControls();
+    document.getElementById('saveGrooveBtn').disabled = false;
+
+    this.setStatus(`Visual groove loaded${nameHint ? ': ' + nameHint : ''}`, 'success');
+    this.debug(`Groove loaded: ${result.vertices} vertices, ${result.turns.toFixed(1)} turns, ${this.duration.toFixed(2)}s`);
   }
 
   encodeToSVG(samples, opts = {}) {
@@ -1062,6 +1271,7 @@ class GrooveCodec {
 
         this.renderGroove();
         this.enablePlaybackControls();
+        document.getElementById('saveGrooveBtn').disabled = false;
 
         const sizeBytes = this.grooveSVG.length;
         const sizeLabel = sizeBytes > 1024 * 1024 ? `${(sizeBytes / 1024 / 1024).toFixed(1)} MB` : `${(sizeBytes / 1024).toFixed(0)} KB`;
@@ -1566,71 +1776,314 @@ class GrooveCodec {
 }
 
 window.addEventListener('load', () => {
-  new GrooveCodec();
+  window.codec = new GrooveCodec();
 });
 </script>
 
 <script type="module">
-import { connect, disconnect, isConnected, getLocalStorage } from 'https://esm.sh/@stacks/connect@8.2.4';
+import {
+  connect,
+  disconnect,
+  isConnected,
+  getLocalStorage,
+  request,
+} from 'https://esm.sh/@stacks/connect@8.2.4';
 
-const landing = document.getElementById('landing');
-const app = document.getElementById('appContainer');
-const walletBtn = document.getElementById('walletBtn');
-const landingBtn = document.getElementById('landingConnectBtn');
+// ── State ──────────────────────────────────────────────────────────────────
+const Auth = {
+  token: sessionStorage.getItem('groove_token'),
+  address: sessionStorage.getItem('groove_address'),
 
-function truncate(addr) {
-  return addr ? addr.slice(0, 6) + '...' + addr.slice(-4) : '';
-}
+  async connectAndAuth() {
+    await connect();
+    const address = getSTXAddress();
+    if (!address) throw new Error('No STX address returned by wallet');
 
-function getAddress() {
+    // 1. Get challenge
+    const challengeRes = await fetch(`/api/auth/challenge?address=${encodeURIComponent(address)}`);
+    if (!challengeRes.ok) throw new Error('Failed to get challenge');
+    const { nonce } = await challengeRes.json();
+
+    // 2. Sign the challenge
+    const sigResult = await request('stx_signMessage', { message: nonce });
+    if (!sigResult?.signature) throw new Error('Signing cancelled or failed');
+
+    // 3. Verify with server, receive JWT
+    const verifyRes = await fetch('/api/auth/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        address,
+        signature: sigResult.signature,
+        publicKey: sigResult.publicKey,
+      }),
+    });
+    if (!verifyRes.ok) {
+      const { error } = await verifyRes.json().catch(() => ({}));
+      throw new Error(error || 'Signature verification failed');
+    }
+    const { token } = await verifyRes.json();
+
+    this.token = token;
+    this.address = address;
+    sessionStorage.setItem('groove_token', token);
+    sessionStorage.setItem('groove_address', address);
+  },
+
+  signOut() {
+    this.token = null;
+    this.address = null;
+    sessionStorage.removeItem('groove_token');
+    sessionStorage.removeItem('groove_address');
+    try { disconnect(); } catch {}
+  },
+
+  async api(path, opts = {}) {
+    const headers = { Authorization: `Bearer ${this.token}`, ...opts.headers };
+    if (opts.body && typeof opts.body === 'object') {
+      headers['Content-Type'] = 'application/json';
+      opts = { ...opts, body: JSON.stringify(opts.body) };
+    }
+    const res = await fetch(path, { ...opts, headers });
+    if (res.status === 401) {
+      // Token expired or invalid — force sign out
+      this.signOut();
+      showView('landing');
+      throw new Error('Session expired. Please reconnect.');
+    }
+    return res;
+  },
+};
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function getSTXAddress() {
   const data = getLocalStorage();
   const addrs = data?.addresses?.stx || [];
   return addrs.length > 0 ? addrs[0].address : '';
 }
 
-function showApp() {
-  landing.style.display = 'none';
-  app.style.display = '';
+function truncate(addr) {
+  return addr ? addr.slice(0, 6) + '...' + addr.slice(-4) : '';
 }
 
-function showLanding() {
-  landing.style.display = 'flex';
-  app.style.display = 'none';
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
 }
 
-function updateWalletUI() {
-  if (isConnected()) {
-    const addr = getAddress();
-    walletBtn.innerHTML = `Connected<span class="wallet-address">${truncate(addr)}</span>`;
-    walletBtn.classList.add('connected');
-    walletBtn.title = addr;
-    showApp();
-  } else {
-    walletBtn.textContent = 'Connect Wallet';
-    walletBtn.classList.remove('connected');
-    walletBtn.title = '';
-    showLanding();
+function formatDate(ts) {
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+// ── View routing ───────────────────────────────────────────────────────────
+function showView(name) {
+  document.getElementById('landing').style.display = name === 'landing' ? 'flex' : 'none';
+  document.getElementById('gallery').style.display = name === 'gallery' ? 'block' : 'none';
+  document.getElementById('appContainer').style.display = name === 'editor' ? 'block' : 'none';
+  if (name === 'gallery') loadGallery();
+}
+
+// ── Gallery ────────────────────────────────────────────────────────────────
+async function loadGallery() {
+  document.getElementById('galleryAddress').textContent = truncate(Auth.address);
+  const grooveGrid = document.getElementById('grooveGrid');
+  const emptyState = document.getElementById('emptyState');
+
+  grooveGrid.innerHTML = '<div style="color:#555;padding:40px">Loading...</div>';
+  emptyState.style.display = 'none';
+
+  try {
+    const res = await Auth.api('/api/grooves');
+    const grooves = await res.json();
+    renderGrooveGrid(grooves);
+  } catch (e) {
+    grooveGrid.innerHTML = `<div style="color:#ff6b6b;padding:20px">${escapeHtml(e.message)}</div>`;
   }
 }
+
+function renderGrooveGrid(grooves) {
+  const grooveGrid = document.getElementById('grooveGrid');
+  const emptyState = document.getElementById('emptyState');
+
+  if (grooves.length === 0) {
+    grooveGrid.innerHTML = '';
+    emptyState.style.display = 'block';
+    return;
+  }
+
+  emptyState.style.display = 'none';
+  grooveGrid.innerHTML = grooves.map(g => `
+    <div class="groove-card" data-id="${escapeHtml(g.id)}">
+      <div class="groove-card-name">${escapeHtml(g.name)}</div>
+      <div class="groove-card-date">${formatDate(g.created_at)}</div>
+      <div class="groove-card-actions">
+        <button class="btn btn-danger btn-sm btn-delete" data-id="${escapeHtml(g.id)}">Delete</button>
+      </div>
+    </div>
+  `).join('');
+
+  grooveGrid.querySelectorAll('.groove-card').forEach(card => {
+    card.addEventListener('click', e => {
+      if (!e.target.classList.contains('btn-delete')) {
+        openGrooveFromServer(card.dataset.id);
+      }
+    });
+  });
+
+  grooveGrid.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      if (!confirm('Delete this groove?')) return;
+      await Auth.api(`/api/grooves/${btn.dataset.id}`, { method: 'DELETE' });
+      loadGallery();
+    });
+  });
+}
+
+async function openGrooveFromServer(id) {
+  try {
+    const res = await Auth.api(`/api/grooves/${id}`);
+    const groove = await res.json();
+    currentGrooveName = groove.name;
+    currentGrooveId = groove.id;
+    document.getElementById('editorGrooveName').textContent = groove.name;
+    showView('editor');
+    window.codec.loadGrooveFromText(groove.svg, groove.name);
+  } catch (e) {
+    alert('Failed to load groove: ' + e.message);
+  }
+}
+
+// ── Editor save ────────────────────────────────────────────────────────────
+let currentGrooveName = null;
+let currentGrooveId = null;
+
+async function saveGroove() {
+  if (!window.codec || !window.codec.grooveSVG) return;
+
+  let name = currentGrooveName;
+  if (!name) {
+    name = prompt('Name your groove:', 'Untitled Groove');
+    if (!name) return;
+  }
+
+  const btn = document.getElementById('saveGrooveBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  try {
+    let res;
+    if (currentGrooveId) {
+      // Overwrite not implemented — save as new
+      res = await Auth.api('/api/grooves', { method: 'POST', body: { name, svg: window.codec.grooveSVG } });
+    } else {
+      res = await Auth.api('/api/grooves', { method: 'POST', body: { name, svg: window.codec.grooveSVG } });
+    }
+
+    if (res.ok) {
+      const groove = await res.json();
+      currentGrooveName = groove.name;
+      currentGrooveId = groove.id;
+      document.getElementById('editorGrooveName').textContent = groove.name;
+      showToast('Groove saved!');
+    } else {
+      const { error } = await res.json().catch(() => ({}));
+      showToast('Save failed: ' + (error || res.status));
+    }
+  } catch (e) {
+    showToast('Save failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save to Library';
+  }
+}
+
+// ── Gallery SVG upload ─────────────────────────────────────────────────────
+async function handleGalleryUpload(file) {
+  if (!file) return;
+  const svgText = await file.text();
+  const name = file.name.replace(/\.svg$/i, '') || 'Uploaded Groove';
+
+  try {
+    const res = await Auth.api('/api/grooves', { method: 'POST', body: { name, svg: svgText } });
+    if (res.ok) {
+      showToast('Groove uploaded!');
+      loadGallery();
+    } else {
+      const { error } = await res.json().catch(() => ({}));
+      showToast('Upload failed: ' + (error || res.status));
+    }
+  } catch (e) {
+    showToast('Upload failed: ' + e.message);
+  }
+}
+
+// ── Wiring ─────────────────────────────────────────────────────────────────
+const landingBtn = document.getElementById('landingConnectBtn');
+const landingError = document.getElementById('landingError');
 
 landingBtn.addEventListener('click', async () => {
-  await connect();
-  updateWalletUI();
-});
+  landingBtn.disabled = true;
+  landingBtn.textContent = 'Connecting...';
+  landingError.style.display = 'none';
 
-walletBtn.addEventListener('click', async () => {
-  if (isConnected()) {
-    disconnect();
-    updateWalletUI();
-  } else {
-    await connect();
-    updateWalletUI();
+  try {
+    await Auth.connectAndAuth();
+    showView('gallery');
+  } catch (e) {
+    landingError.textContent = e.message;
+    landingError.style.display = 'block';
+  } finally {
+    landingBtn.disabled = false;
+    landingBtn.textContent = 'Connect Wallet to Enter';
   }
 });
 
-// Hide app until auth is confirmed
-app.style.display = 'none';
-updateWalletUI();
+document.getElementById('signOutBtn').addEventListener('click', () => {
+  Auth.signOut();
+  showView('landing');
+});
+
+document.getElementById('newGrooveBtn').addEventListener('click', () => {
+  currentGrooveName = null;
+  currentGrooveId = null;
+  document.getElementById('editorGrooveName').textContent = '';
+  showView('editor');
+});
+
+document.getElementById('emptyNewGrooveBtn').addEventListener('click', () => {
+  currentGrooveName = null;
+  currentGrooveId = null;
+  document.getElementById('editorGrooveName').textContent = '';
+  showView('editor');
+});
+
+document.getElementById('backToGalleryBtn').addEventListener('click', () => {
+  showView('gallery');
+});
+
+document.getElementById('saveGrooveBtn').addEventListener('click', saveGroove);
+
+document.getElementById('galleryUploadSvg').addEventListener('change', e => {
+  handleGalleryUpload(e.target.files[0]);
+  e.target.value = '';
+});
+
+// ── Init ───────────────────────────────────────────────────────────────────
+if (Auth.token && Auth.address) {
+  // Resume session from sessionStorage
+  showView('gallery');
+} else {
+  showView('landing');
+}
 </script>
 </body>
 </html>

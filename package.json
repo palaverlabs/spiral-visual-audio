@@ -8,5 +8,12 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "@stacks/encryption": "^6.16.0",
+    "better-sqlite3": "^12.6.2",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^9.0.0"
   }
 }
