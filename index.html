@@ -393,10 +393,62 @@
       display: block;
       margin-top: 2px;
     }
+
+    /* Landing / auth gate */
+    #landing {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    #landing h1 {
+      font-size: 3em;
+      background: linear-gradient(45deg, #4ecdc4, #44a08d);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin: 0 0 12px;
+    }
+    #landing .landing-subtitle {
+      color: #888;
+      font-size: 1.1em;
+      margin-bottom: 48px;
+    }
+    #landing .btn-connect {
+      padding: 16px 36px;
+      font-size: 1.1em;
+      background: linear-gradient(45deg, #4ecdc4, #44a08d);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      transition: opacity 0.2s;
+    }
+    #landing .btn-connect:hover { opacity: 0.85; }
+    #landing .landing-note {
+      margin-top: 20px;
+      color: #555;
+      font-size: 0.85em;
+    }
 </style>
 </head>
 <body>
-<div class="container">
+
+<div id="landing">
+  <h1>Visual Audio Groove Codec</h1>
+  <div class="landing-subtitle">Transform audio into visual grooves</div>
+  <button class="btn-connect" id="landingConnectBtn">Connect Wallet to Enter</button>
+  <div class="landing-note">Requires a Stacks wallet (Leather, Xverse, etc.)</div>
+</div>
+
+<div class="container" id="appContainer">
   <div class="header">
     <div class="header-left">
       <h1>Visual Audio Groove Codec</h1>
@@ -1521,31 +1573,52 @@ window.addEventListener('load', () => {
 <script type="module">
 import { connect, disconnect, isConnected, getLocalStorage } from 'https://esm.sh/@stacks/connect@8.2.4';
 
-const btn = document.getElementById('walletBtn');
+const landing = document.getElementById('landing');
+const app = document.getElementById('appContainer');
+const walletBtn = document.getElementById('walletBtn');
+const landingBtn = document.getElementById('landingConnectBtn');
 
 function truncate(addr) {
   return addr ? addr.slice(0, 6) + '...' + addr.slice(-4) : '';
 }
 
+function getAddress() {
+  const data = getLocalStorage();
+  const addrs = data?.addresses?.stx || [];
+  return addrs.length > 0 ? addrs[0].address : '';
+}
+
+function showApp() {
+  landing.style.display = 'none';
+  app.style.display = '';
+}
+
+function showLanding() {
+  landing.style.display = 'flex';
+  app.style.display = 'none';
+}
+
 function updateWalletUI() {
   if (isConnected()) {
-    const data = getLocalStorage();
-    const addrs = data?.addresses?.stx || [];
-    const addr = addrs.length > 0 ? addrs[0].address : '';
-    btn.innerHTML = `
-      Connected
-      <span class="wallet-address">${truncate(addr)}</span>
-    `;
-    btn.classList.add('connected');
-    btn.title = addr;
+    const addr = getAddress();
+    walletBtn.innerHTML = `Connected<span class="wallet-address">${truncate(addr)}</span>`;
+    walletBtn.classList.add('connected');
+    walletBtn.title = addr;
+    showApp();
   } else {
-    btn.textContent = 'Connect Wallet';
-    btn.classList.remove('connected');
-    btn.title = '';
+    walletBtn.textContent = 'Connect Wallet';
+    walletBtn.classList.remove('connected');
+    walletBtn.title = '';
+    showLanding();
   }
 }
 
-btn.addEventListener('click', async () => {
+landingBtn.addEventListener('click', async () => {
+  await connect();
+  updateWalletUI();
+});
+
+walletBtn.addEventListener('click', async () => {
   if (isConnected()) {
     disconnect();
     updateWalletUI();
@@ -1555,6 +1628,8 @@ btn.addEventListener('click', async () => {
   }
 });
 
+// Hide app until auth is confirmed
+app.style.display = 'none';
 updateWalletUI();
 </script>
 </body>
