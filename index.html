@@ -370,13 +370,41 @@
         margin: 10px 0;
       }
     }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+    .header-left { text-align: left; }
+
+    .btn-wallet {
+      padding: 10px 20px;
+      font-size: 0.9em;
+      white-space: nowrap;
+    }
+    .btn-wallet.connected {
+      background: linear-gradient(45deg, #44a08d, #2d6a5a);
+    }
+    .wallet-address {
+      font-size: 0.75em;
+      opacity: 0.8;
+      display: block;
+      margin-top: 2px;
+    }
 </style>
 </head>
 <body>
 <div class="container">
   <div class="header">
-    <h1>Visual Audio Groove Codec</h1>
-    <div class="subtitle">Transform audio into visual grooves &bull; Load & play existing grooves</div>
+    <div class="header-left">
+      <h1>Visual Audio Groove Codec</h1>
+      <div class="subtitle">Transform audio into visual grooves &bull; Load & play existing grooves</div>
+    </div>
+    <div class="wallet-area">
+      <button class="btn btn-wallet" id="walletBtn">Connect Wallet</button>
+    </div>
   </div>
   
   <div class="main-content">
@@ -1488,6 +1516,46 @@ class GrooveCodec {
 window.addEventListener('load', () => {
   new GrooveCodec();
 });
+</script>
+
+<script type="module">
+import { connect, disconnect, isConnected, getLocalStorage } from 'https://esm.sh/@stacks/connect@8.2.4';
+
+const btn = document.getElementById('walletBtn');
+
+function truncate(addr) {
+  return addr ? addr.slice(0, 6) + '...' + addr.slice(-4) : '';
+}
+
+function updateWalletUI() {
+  if (isConnected()) {
+    const data = getLocalStorage();
+    const addrs = data?.addresses?.stx || [];
+    const addr = addrs.length > 0 ? addrs[0].address : '';
+    btn.innerHTML = `
+      Connected
+      <span class="wallet-address">${truncate(addr)}</span>
+    `;
+    btn.classList.add('connected');
+    btn.title = addr;
+  } else {
+    btn.textContent = 'Connect Wallet';
+    btn.classList.remove('connected');
+    btn.title = '';
+  }
+}
+
+btn.addEventListener('click', async () => {
+  if (isConnected()) {
+    disconnect();
+    updateWalletUI();
+  } else {
+    await connect();
+    updateWalletUI();
+  }
+});
+
+updateWalletUI();
 </script>
 </body>
 </html>

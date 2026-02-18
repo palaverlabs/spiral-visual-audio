@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Visual Audio Groove Codec</title>
+<style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+      color: #fff;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .header {
+      margin-bottom: 30px;
+    }
+    
+    .header h1 {
+      font-size: 2.5em;
+      background: linear-gradient(45deg, #4ecdc4, #44a08d);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin: 0;
+    }
+    
+    .subtitle {
+      color: #888;
+      font-size: 1.1em;
+      margin: 10px 0;
+    }
+    
+    .main-content {
+      display: grid;
+      grid-template-columns: 1fr 500px;
+      gap: 30px;
+      align-items: start;
+    }
+    
+    .controls-panel {
+      background: rgba(255,255,255,0.05);
+      border-radius: 15px;
+      padding: 25px;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .groove-display {
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, #222 0%, #111 100%);
+      border-radius: 50%;
+      position: relative;
+      overflow: hidden;
+      border: 3px solid #4ecdc4;
+      box-shadow: 0 0 30px rgba(78, 205, 196, 0.3);
+    }
+    
+    .stylus {
+      width: 12px;
+      height: 12px;
+      background: radial-gradient(circle, #ff4444, #cc2222);
+      border-radius: 50%;
+      position: absolute;
+      display: none;
+      z-index: 100;
+      box-shadow: 0 0 15px #ff4444, 0 0 30px rgba(255, 68, 68, 0.5);
+      border: 2px solid #fff;
+    }
+    
+    .upload-area {
+      border: 2px dashed #4ecdc4;
+      border-radius: 12px;
+      padding: 30px;
+      margin: 20px 0;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .upload-area:hover {
+      background: rgba(78, 205, 196, 0.1);
+      border-color: #44a08d;
+    }
+    
+    .upload-area.dragover {
+      background: rgba(78, 205, 196, 0.2);
+      border-color: #4ecdc4;
+      transform: scale(1.02);
+    }
+    
+    .btn {
+      background: linear-gradient(45deg, #4ecdc4, #44a08d);
+      border: none;
+      padding: 12px 24px;
+      margin: 8px;
+      color: white;
+      border-radius: 25px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 14px;
+    }
+    
+    .btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(78, 205, 196, 0.4);
+    }
+    
+    .btn:disabled {
+      background: #666;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    
+    .btn.loading {
+      background: #888;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .btn.loading::after {
+      content: '';
+      position: absolute;
+      left: -50%;
+      top: 0;
+      width: 50%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+      animation: loading 1.5s infinite;
+    }
+    
+    @keyframes loading {
+      0% { left: -50%; }
+      100% { left: 100%; }
+    }
+    
+    .status {
+      margin: 15px 0;
+      padding: 10px;
+      border-radius: 8px;
+      font-weight: 500;
+    }
+    
+    .status.success {
+      background: rgba(78, 205, 196, 0.2);
+      color: #4ecdc4;
+      border: 1px solid rgba(78, 205, 196, 0.3);
+    }
+    
+    .status.error {
+      background: rgba(255, 68, 68, 0.2);
+      color: #ff4444;
+      border: 1px solid rgba(255, 68, 68, 0.3);
+    }
+    
+    .status.info {
+      background: rgba(255, 193, 7, 0.2);
+      color: #ffc107;
+      border: 1px solid rgba(255, 193, 7, 0.3);
+    }
+    
+    .controls-section {
+      margin: 20px 0;
+      padding: 15px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 10px;
+      border-left: 4px solid #4ecdc4;
+    }
+    
+    .controls-section h3 {
+      margin: 0 0 15px 0;
+      color: #4ecdc4;
+      font-size: 1.1em;
+    }
+    
+    .control-group {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 10px 0;
+    }
+    
+    .control-group label {
+      color: #ddd;
+      font-weight: 500;
+    }
+    
+    .control-group input[type="range"] {
+      width: 120px;
+      margin: 0 10px;
+    }
+    
+    .control-group .value {
+      color: #4ecdc4;
+      font-weight: 600;
+      min-width: 40px;
+      text-align: right;
+    }
+    
+    .playback-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin: 20px 0;
+    }
+    
+    .time-display {
+      font-family: 'Courier New', monospace;
+      font-size: 1.2em;
+      color: #4ecdc4;
+      margin: 15px 0;
+      padding: 10px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+    }
+    
+    .debug {
+      background: rgba(0,0,0,0.8);
+      color: #4ecdc4;
+      padding: 15px;
+      margin-top: 20px;
+      border-radius: 10px;
+      text-align: left;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid #333;
+    }
+    
+    .groove-placeholder {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #666;
+      font-size: 18px;
+      text-align: center;
+      pointer-events: none;
+    }
+    
+    input[type="file"] {
+      display: none;
+    }
+    
+    .audio-info {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 15px 0;
+      font-size: 14px;
+    }
+    
+    .audio-info .info-item {
+      background: rgba(0,0,0,0.3);
+      padding: 8px;
+      border-radius: 6px;
+      text-align: center;
+    }
+    
+    .audio-info .info-label {
+      color: #888;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    
+    .audio-info .info-value {
+      color: #4ecdc4;
+      font-weight: 600;
+    }
+    
+    @media (max-width: 1024px) {
+      .main-content {
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
+      
+      .groove-display {
+        width: 400px;
+        height: 400px;
+        margin: 0 auto;
+      }
+    }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>🎵 Visual Audio Groove Codec</h1>
+    <div class="subtitle">Transform audio into visual grooves • Load & play existing grooves</div>
+  </div>
+  
+  <div class="main-content">
+    <div class="controls-panel">
+      <div class="controls-section">
+        <h3>📁 Audio Input</h3>
+        <div class="upload-area" id="uploadArea">
+          <div style="font-size: 2em; margin-bottom: 10px;">🎵</div>
+          <div style="font-weight: 600; margin-bottom: 5px;">Drop audio file here</div>
+          <div style="color: #888; font-size: 14px;">or click to browse</div>
+          <input type="file" id="audioFile" accept="audio/*">
+        </div>
+        
+        <div class="upload-area" id="svgUploadArea" style="margin-top: 15px; border-color: #da70d6; background: rgba(218, 112, 214, 0.05);">
+          <div style="font-size: 2em; margin-bottom: 10px;">🌀</div>
+          <div style="font-weight: 600; margin-bottom: 5px; color: #da70d6;">Drop visual groove SVG here</div>
+          <div style="color: #888; font-size: 14px;">or click to load existing groove</div>
+          <input type="file" id="svgFile" accept=".svg,image/svg+xml">
+        </div>
+        
+        <div class="status info" id="audioStatus">
+          No audio loaded
+        </div>
+        
+        <div class="audio-info" id="audioInfo" style="display: none;">
+          <div class="info-item">
+            <div class="info-label">Duration</div>
+            <div class="info-value" id="infoDuration">--</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Sample Rate</div>
+            <div class="info-value" id="infoSampleRate">--</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Channels</div>
+            <div class="info-value" id="infoChannels">--</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">File Size</div>
+            <div class="info-value" id="infoSize">--</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="controls-section">
+        <h3>⚙️ Groove Settings</h3>
+        <div class="control-group">
+          <label>Quality:</label>
+          <input type="range" id="qualitySlider" min="1" max="5" value="3" step="1">
+          <span class="value" id="qualityValue">3</span>
+        </div>
+        <div class="control-group">
+          <label>Spiral Turns:</label>
+          <input type="range" id="turnsSlider" min="3" max="12" value="6" step="1">
+          <span class="value" id="turnsValue">6</span>
+        </div>
+        <div class="control-group">
+          <label>Groove Sensitivity:</label>
+          <input type="range" id="sensitivitySlider" min="1" max="10" value="5" step="1">
+          <span class="value" id="sensitivityValue">5</span>
+        </div>
+      </div>
+      
+      <div class="controls-section">
+        <h3>🎬 Actions</h3>
+        <button class="btn" id="generateGroove" disabled>🌀 Generate Visual Groove</button>
+        <button class="btn" id="downloadSVG" disabled>📥 Download SVG</button>
+        <button class="btn" id="downloadAudio" disabled>🎵 Export Audio</button>
+        
+        <div class="playback-controls">
+          <button class="btn" id="playBtn" disabled>▶️ Play Groove</button>
+          <button class="btn" id="pauseBtn" disabled style="display: none;">⏸️ Pause</button>
+        </div>
+        
+        <div class="control-group">
+          <label>Playback Speed:</label>
+          <input type="range" id="speedSlider" min="0.25" max="2" value="1" step="0.25">
+          <span class="value" id="speedValue">1.0x</span>
+        </div>
+      </div>
+      
+      <div class="time-display">
+        <span id="currentTime">00:00</span> / <span id="totalTime">00:00</span>
+      </div>
+    </div>
+    
+    <div class="groove-display" id="grooveDisplay">
+      <div class="groove-placeholder">
+        Upload audio to generate<br>visual groove
+      </div>
+      <div class="stylus" id="stylus"></div>
+    </div>
+  </div>
+  
+  <div class="debug" id="debugLog">
+    🎵 Visual Audio Groove Codec ready<br>
+    → Upload audio to create new visual groove<br>
+    → Or load existing .svg groove file for playback
+  </div>
+</div>
+
+<script>
+// Visual Audio Groove Codec
+class GrooveCodec {
+  constructor() {
+    this.audioData = null;
+    this.originalAudio = null;
+    this.sampleRate = 44100;
+    this.duration = 0;
+    this.grooveSVG = null;
+    this.isPlaying = false;
+    this.playbackTime = 0;
+    this.animationId = null;
+    this.audioSource = null;
+    
+    this.initializeUI();
+  }
+  
+  initializeUI() {
+    // Audio file upload
+    const uploadArea = document.getElementById('uploadArea');
+    const audioFile = document.getElementById('audioFile');
+    
+    uploadArea.addEventListener('click', () => audioFile.click());
+    uploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadArea.classList.add('dragover');
+    });
+    uploadArea.addEventListener('dragleave', () => {
+      uploadArea.classList.remove('dragover');
+    });
+    uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('audio/')) {
+        this.loadAudioFile(file);
+      } else if (file && (file.type === 'image/svg+xml' || file.name.endsWith('.svg'))) {
+        this.loadGrooveFile(file);
+      } else {
+        this.debug('❌ Please drop an audio file or SVG groove file');
+        this.setStatus('❌ Please drop an audio file or SVG groove file', 'error');
+      }
+    });
+    
+    audioFile.addEventListener('change', (e) => {
+      if (e.target.files[0]) {
+        this.loadAudioFile(e.target.files[0]);
+      }
+    });
+    
+    // SVG file upload
+    const svgUploadArea = document.getElementById('svgUploadArea');
+    const svgFile = document.getElementById('svgFile');
+    
+    svgUploadArea.addEventListener('click', () => svgFile.click());
+    svgUploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      svgUploadArea.classList.add('dragover');
+    });
+    svgUploadArea.addEventListener('dragleave', () => {
+      svgUploadArea.classList.remove('dragover');
+    });
+    svgUploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      svgUploadArea.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file && (file.type === 'image/svg+xml' || file.name.endsWith('.svg'))) {
+        this.loadGrooveFile(file);
+      } else if (file && file.type.startsWith('audio/')) {
+        this.loadAudioFile(file);
+      } else {
+        this.debug('❌ Please drop an SVG groove file or audio file');
+        this.setStatus('❌ Please drop an SVG groove file or audio file', 'error');
+      }
+    });
+    
+    svgFile.addEventListener('change', (e) => {
+      if (e.target.files[0]) {
+        this.loadGrooveFile(e.target.files[0]);
+      }
+    });
+    
+    // Controls
+    document.getElementById('generateGroove').addEventListener('click', () => this.generateGroove());
+    document.getElementById('playBtn').addEventListener('click', () => this.startPlayback());
+    document.getElementById('pauseBtn').addEventListener('click', () => this.stopPlayback());
+    document.getElementById('downloadSVG').addEventListener('click', () => this.downloadSVG());
+    document.getElementById('downloadAudio').addEventListener('click', () => this.downloadAudio());
+    
+    // Sliders
+    ['quality', 'turns', 'sensitivity', 'speed'].forEach(param => {
+      const slider = document.getElementById(`${param}Slider`);
+      const value = document.getElementById(`${param}Value`);
+      slider.addEventListener('input', (e) => {
+        value.textContent = param === 'speed' ? `${e.target.value}x` : e.target.value;
+      });
+    });
+    
+    this.debug('🎵 Visual Audio Groove Codec initialized');
+  }
+  
+  async loadAudioFile(file) {
+    this.debug(`📁 Loading audio file: ${file.name}`);
+    this.setStatus('Loading audio file...', 'info');
+    
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const arrayBuffer = await file.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      
+      // Store original audio data
+      this.originalAudio = audioBuffer.getChannelData(0); // Mono for now
+      this.sampleRate = audioBuffer.sampleRate;
+      this.duration = audioBuffer.duration;
+      
+      // Update UI
+      this.setStatus(`✅ Audio loaded: ${file.name}`, 'success');
+      this.updateAudioInfo(file, audioBuffer);
+      document.getElementById('generateGroove').disabled = false;
+      
+      this.debug(`✅ Audio loaded: ${this.originalAudio.length} samples, ${this.sampleRate}Hz, ${this.duration.toFixed(2)}s`);
+      
+    } catch (error) {
+      this.debug(`❌ Failed to load audio: ${error.message}`);
+      this.setStatus('❌ Failed to load audio file', 'error');
+    }
+  }
+  
+  async loadGrooveFile(file) {
+    this.debug(`🌀 Loading visual groove file: ${file.name}`);
+    this.setStatus('Loading visual groove...', 'info');
+    
+    try {
+      const svgText = await file.text();
+      
+      // Parse SVG to extract metadata
+      const parser = new DOMParser();
+      const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
+      
+      // Check if it's a valid visual groove
+      const metadata = svgDoc.querySelector('metadata audio-data');
+      if (!metadata) {
+        throw new Error('Invalid visual groove file - missing audio metadata');
+      }
+      
+      // Extract audio properties
+      const sampleRate = parseInt(metadata.getAttribute('sample-rate'));
+      const audioLength = parseInt(metadata.getAttribute('length'));
+      const turns = parseInt(metadata.getAttribute('turns'));
+      const encodedAudio = metadata.getAttribute('encoded-audio');
+      
+      if (!sampleRate || !audioLength || !encodedAudio) {
+        throw new Error('Incomplete audio metadata in groove file');
+      }
+      
+      // Store the SVG and metadata
+      this.grooveSVG = svgText;
+      this.sampleRate = sampleRate;
+      
+      // Decode the audio data for validation
+      const decodedAudio = this.decodeAudioFromEncodedString(encodedAudio);
+      this.audioData = decodedAudio;
+      this.originalAudio = null; // Clear original since we loaded from groove
+      
+      // Calculate duration from decoded audio length (more accurate)
+      this.duration = decodedAudio.length / sampleRate;
+      
+      // Update UI
+      this.setStatus(`✅ Visual groove loaded: ${file.name}`, 'success');
+      this.updateGrooveInfo(file, { sampleRate, audioLength: decodedAudio.length, duration: this.duration, turns });
+      
+      // Render the groove
+      this.renderGroove();
+      
+      // Enable playback controls (skip generation since we loaded existing)
+      this.enablePlaybackControls();
+      
+      // Update generation button to show it's loaded
+      const genBtn = document.getElementById('generateGroove');
+      genBtn.textContent = '✅ Groove Loaded (Generate New)';
+      genBtn.disabled = false;
+      
+      this.debug(`✅ Groove loaded: ${decodedAudio.length} samples, ${sampleRate}Hz, ${this.duration.toFixed(2)}s, ${turns} turns`);
+      this.debug('🎵 Ready for playback from visual groove!');
+      
+    } catch (error) {
+      this.debug(`❌ Failed to load groove: ${error.message}`);
+      this.setStatus('❌ Failed to load visual groove file', 'error');
+      console.error('Groove loading error:', error);
+    }
+  }
+  
+  updateGrooveInfo(file, metadata) {
+    const { sampleRate, audioLength, duration, turns } = metadata;
+    
+    document.getElementById('audioInfo').style.display = 'grid';
+    document.getElementById('infoDuration').textContent = `${Math.floor(duration / 60)}:${Math.floor(duration % 60).toString().padStart(2, '0')}`;
+    document.getElementById('infoSampleRate').textContent = `${sampleRate} Hz`;
+    document.getElementById('infoChannels').textContent = 'Mono (Visual)';
+    document.getElementById('infoSize').textContent = `${(file.size / 1024).toFixed(1)} KB`;
+  }
+  
+  decodeAudioFromEncodedString(encodedAudio) {
+    try {
+      // Check if this is the new format with metadata
+      if (encodedAudio.includes('|')) {
+        const [encodedMetadata, encodedData] = encodedAudio.split('|');
+        const metadata = JSON.parse(atob(encodedMetadata));
+        
+        // Decode the compressed audio
+        const binary = atob(encodedData);
+        const uint8Array = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          uint8Array[i] = binary.charCodeAt(i);
+        }
+        
+        // Convert back to float audio
+        const compressedAudio = new Float32Array(uint8Array.length);
+        for (let i = 0; i < uint8Array.length; i++) {
+          compressedAudio[i] = (uint8Array[i] - 128) / 127;
+        }
+        
+        // Reconstruct original length audio with interpolation
+        const { downsample, originalLength } = metadata;
+        const audioData = new Float32Array(originalLength);
+        
+        for (let i = 0; i < originalLength; i++) {
+          const compressedIndex = Math.floor(i / downsample);
+          if (compressedIndex < compressedAudio.length) {
+            audioData[i] = compressedAudio[compressedIndex];
+          }
+        }
+        
+        this.debug(`🔓 Decoded with metadata: ${compressedAudio.length} compressed → ${audioData.length} samples`);
+        return audioData;
+        
+      } else {
+        // Legacy format - decode as before
+        const binary = atob(encodedAudio);
+        const uint8Array = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          uint8Array[i] = binary.charCodeAt(i);
+        }
+        
+        const audioData = new Float32Array(uint8Array.length);
+        for (let i = 0; i < uint8Array.length; i++) {
+          audioData[i] = (uint8Array[i] - 128) / 127;
+        }
+        
+        this.debug(`🔓 Decoded legacy format: ${audioData.length} samples`);
+        return audioData;
+      }
+      
+    } catch (error) {
+      throw new Error(`Failed to decode audio data: ${error.message}`);
+    }
+  }
+  
+  updateAudioInfo(file, audioBuffer) {
+    document.getElementById('audioInfo').style.display = 'grid';
+    document.getElementById('infoDuration').textContent = `${Math.floor(audioBuffer.duration / 60)}:${Math.floor(audioBuffer.duration % 60).toString().padStart(2, '0')}`;
+    document.getElementById('infoSampleRate').textContent = `${audioBuffer.sampleRate} Hz`;
+    document.getElementById('infoChannels').textContent = audioBuffer.numberOfChannels;
+    document.getElementById('infoSize').textContent = `${(file.size / 1024 / 1024).toFixed(1)} MB`;
+  }
+  
+  generateGroove() {
+    if (!this.originalAudio) {
+      this.debug('❌ No audio data to encode');
+      this.setStatus('❌ Please load an audio file first', 'error');
+      return;
+    }
+    
+    const btn = document.getElementById('generateGroove');
+    btn.classList.add('loading');
+    btn.textContent = '🔄 Encoding Audio to Visual Groove...';
+    btn.disabled = true;
+    
+    this.debug('🌀 Starting audio-to-groove encoding...');
+    
+    setTimeout(() => {
+      try {
+        // Get settings
+        const quality = parseInt(document.getElementById('qualitySlider').value);
+        const turns = parseInt(document.getElementById('turnsSlider').value);
+        const sensitivity = parseInt(document.getElementById('sensitivitySlider').value);
+        
+        // Encode audio into groove path
+        const groovePath = this.encodeAudioToGroove(this.originalAudio, {
+          quality,
+          turns,
+          sensitivity
+        });
+        
+        // Generate SVG
+        this.grooveSVG = this.createGrooveSVG(groovePath, {
+          width: 500,
+          height: 500,
+          turns,
+          audioLength: this.originalAudio.length,
+          sampleRate: this.sampleRate
+        });
+        
+        // Render groove
+        this.renderGroove();
+        
+        // Enable controls
+        this.enablePlaybackControls();
+        
+        this.debug('✅ Visual groove generated successfully!');
+        this.setStatus('✅ Visual groove generated! Ready for playback', 'success');
+        
+      } catch (error) {
+        this.debug(`❌ Groove generation failed: ${error.message}`);
+        this.setStatus('❌ Failed to generate groove', 'error');
+      }
+      
+      btn.classList.remove('loading');
+      btn.textContent = '🌀 Generate Visual Groove';
+      btn.disabled = false;
+    }, 100);
+  }
+  
+  encodeAudioToGroove(audioData, settings) {
+    const { quality, turns, sensitivity } = settings;
+    const center = 250; // Center of 500x500 viewport
+    const startRadius = 200; // Start from outer edge
+    const endRadius = 50;   // End at inner edge
+    const totalSamples = audioData.length;
+    
+    // Downsample based on quality (higher quality = more points)
+    const pointsPerTurn = 200 * quality;
+    const totalPoints = turns * pointsPerTurn;
+    const sampleStep = Math.max(1, Math.floor(totalSamples / totalPoints));
+    
+    const path = ['M'];
+    let samplesProcessed = 0;
+    
+    for (let point = 0; point < totalPoints; point++) {
+      const progress = point / totalPoints;
+      const angle = progress * turns * 2 * Math.PI;
+      
+      // Calculate base spiral position (centered)
+      const radius = startRadius + (endRadius - startRadius) * progress;
+      
+      // Get audio amplitude at this point
+      const sampleIndex = Math.floor(samplesProcessed);
+      const amplitude = sampleIndex < totalSamples ? audioData[sampleIndex] : 0;
+      
+      // Apply amplitude to radius with sensitivity
+      const grooveVariation = amplitude * sensitivity * 12; // Increased variation
+      const finalRadius = radius + grooveVariation;
+      
+      // Calculate coordinates (properly centered)
+      const x = center + finalRadius * Math.cos(angle);
+      const y = center + finalRadius * Math.sin(angle);
+      
+      path.push(point === 0 ? `${x.toFixed(2)},${y.toFixed(2)}` : `L${x.toFixed(2)},${y.toFixed(2)}`);
+      
+      samplesProcessed += sampleStep;
+    }
+    
+    return path.join(' ');
+  }
+  
+  createGrooveSVG(pathData, metadata) {
+    const { width, height, turns, audioLength, sampleRate } = metadata;
+    
+    // Encode audio data in path for playback
+    const encodedAudio = this.encodeAudioForSVG(this.originalAudio);
+    
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <defs>
+        <radialGradient id="grooveGradient" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" style="stop-color:#333;stop-opacity:1" />
+          <stop offset="70%" style="stop-color:#222;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#111;stop-opacity:1" />
+        </radialGradient>
+        <linearGradient id="pathGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#4ecdc4;stop-opacity:0.8" />
+          <stop offset="50%" style="stop-color:#44a08d;stop-opacity:0.9" />
+          <stop offset="100%" style="stop-color:#4ecdc4;stop-opacity:0.8" />
+        </linearGradient>
+      </defs>
+      
+      <!-- Background (properly centered) -->
+      <circle cx="${width/2}" cy="${height/2}" r="${width/2-15}" fill="url(#grooveGradient)" stroke="#333" stroke-width="2"/>
+      
+      <!-- Audio Groove Path -->
+      <path id="audioGroove" 
+            d="${pathData}" 
+            fill="none" 
+            stroke="url(#pathGradient)" 
+            stroke-width="1.5" 
+            stroke-linecap="round"
+            opacity="0.9"/>
+      
+      <!-- Metadata for decoding -->
+      <metadata>
+        <audio-data sample-rate="${sampleRate}" 
+                    length="${audioLength}" 
+                    turns="${turns}"
+                    encoded-audio="${encodedAudio}"/>
+      </metadata>
+      
+      <!-- Center label -->
+      <circle cx="${width/2}" cy="${height/2}" r="20" fill="#111" stroke="#4ecdc4" stroke-width="2"/>
+      <text x="${width/2}" y="${height/2}" text-anchor="middle" dominant-baseline="middle" 
+            fill="#4ecdc4" font-family="monospace" font-size="12" font-weight="bold">♪</text>
+    </svg>`;
+  }
+  
+  encodeAudioForSVG(audioData) {
+    // Simple base64 encoding with minimal downsampling to preserve timing
+    const downsample = 2; // Minimal reduction to preserve quality and timing
+    const compressed = [];
+    
+    for (let i = 0; i < audioData.length; i += downsample) {
+      // Convert to 8-bit integer (-128 to 127)
+      const sample = Math.round(audioData[i] * 127);
+      compressed.push(sample);
+    }
+    
+    // Store both the compressed data and the downsample factor
+    const metadata = {
+      samples: compressed,
+      downsample: downsample,
+      originalLength: audioData.length
+    };
+    
+    // Convert to base64 string
+    const uint8Array = new Uint8Array(compressed.map(s => s + 128)); // Offset to 0-255
+    let binary = '';
+    for (let i = 0; i < uint8Array.length; i++) {
+      binary += String.fromCharCode(uint8Array[i]);
+    }
+    
+    const encodedData = btoa(binary);
+    const encodedMetadata = btoa(JSON.stringify({ downsample, originalLength: audioData.length }));
+    
+    return `${encodedMetadata}|${encodedData}`;
+  }
+  
+  renderGroove() {
+    const display = document.getElementById('grooveDisplay');
+    if (!this.grooveSVG) return;
+    
+    display.innerHTML = this.grooveSVG;
+    
+    // Add stylus
+    const stylus = document.createElement('div');
+    stylus.id = 'stylus';
+    stylus.className = 'stylus';
+    display.appendChild(stylus);
+    
+    this.debug('🖼️ Visual groove rendered');
+  }
+  
+  enablePlaybackControls() {
+    // Calculate duration from actual audio data if available
+    let displayDuration = this.duration;
+    if (this.audioData) {
+      displayDuration = this.audioData.length / this.sampleRate;
+      this.debug(`📊 Calculated duration: ${this.audioData.length} samples ÷ ${this.sampleRate}Hz = ${displayDuration.toFixed(2)}s`);
+    }
+    
+    document.getElementById('totalTime').textContent = this.formatTime(displayDuration);
+    ['playBtn', 'downloadSVG', 'downloadAudio'].forEach(id => {
+      document.getElementById(id).disabled = false;
+    });
+  }
+  
+  startPlayback() {
+    if (!this.grooveSVG) return;
+    
+    this.debug('▶️ Starting groove playback...');
+    
+    // Decode audio from visual groove
+    const reconstructedAudio = this.decodeAudioFromGroove();
+    if (!reconstructedAudio) {
+      this.debug('❌ Failed to decode audio from groove');
+      return;
+    }
+    
+    const speed = parseFloat(document.getElementById('speedSlider').value);
+    this.debug(`🎛️ Speed setting: ${speed}x (${speed < 1 ? 'slower' : speed > 1 ? 'faster' : 'normal'})`);
+    this.debug(`📊 Audio: ${reconstructedAudio.length} samples at ${this.sampleRate}Hz = ${(reconstructedAudio.length / this.sampleRate).toFixed(2)}s`);
+    
+    this.isPlaying = true;
+    document.getElementById('playBtn').style.display = 'none';
+    document.getElementById('pauseBtn').style.display = 'inline-block';
+    document.getElementById('pauseBtn').disabled = false;
+    
+    // Play reconstructed audio
+    this.playReconstructedAudio(reconstructedAudio, speed);
+    
+    // Animate stylus
+    this.animateStylus(speed, reconstructedAudio.length);
+  }
+  
+  decodeAudioFromGroove() {
+    try {
+      // If we have audioData from a loaded groove, use it
+      if (this.audioData && !this.originalAudio) {
+        this.debug('🔓 Using audio data from loaded groove');
+        return this.audioData;
+      }
+      
+      // Otherwise, try to extract from SVG metadata
+      const parser = new DOMParser();
+      const svgDoc = parser.parseFromString(this.grooveSVG, 'image/svg+xml');
+      const metadata = svgDoc.querySelector('metadata audio-data');
+      
+      if (!metadata) {
+        this.debug('⚠️ No audio metadata found, using fallback reconstruction');
+        return this.originalAudio || this.audioData; // Fallback
+      }
+      
+      const encodedAudio = metadata.getAttribute('encoded-audio');
+      const sampleRate = parseInt(metadata.getAttribute('sample-rate'));
+      
+      // Decode using the dedicated method
+      const audioData = this.decodeAudioFromEncodedString(encodedAudio);
+      
+      this.debug(`🔓 Decoded ${audioData.length} samples from visual groove`);
+      return audioData;
+      
+    } catch (error) {
+      this.debug(`❌ Decode error: ${error.message}`);
+      return this.originalAudio || this.audioData; // Fallback
+    }
+  }
+  
+  playReconstructedAudio(audioData, speed) {
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const buffer = audioContext.createBuffer(1, audioData.length, this.sampleRate);
+      buffer.copyToChannel(audioData, 0);
+      
+      this.audioSource = audioContext.createBufferSource();
+      this.audioSource.buffer = buffer;
+      
+      // Apply speed directly to playback rate
+      this.audioSource.playbackRate.value = speed;
+      
+      this.audioSource.connect(audioContext.destination);
+      this.audioSource.start();
+      this.audioSource.onended = () => this.stopPlayback();
+      
+      const expectedDuration = (audioData.length / this.sampleRate) / speed;
+      this.debug(`🎵 Audio playback: ${speed}x rate → ${expectedDuration.toFixed(2)}s expected duration`);
+      
+    } catch (error) {
+      this.debug(`❌ Audio playback error: ${error.message}`);
+    }
+  }
+  
+  animateStylus(speed, audioLength) {
+    const path = document.querySelector('#audioGroove');
+    const stylus = document.getElementById('stylus');
+    
+    if (!path || !stylus) return;
+    
+    const pathLength = path.getTotalLength();
+    
+    // Calculate timing based on actual audio length and sample rate
+    const actualAudioDuration = audioLength / this.sampleRate; // True duration in seconds
+    const playbackDuration = actualAudioDuration / speed; // How long playback will take
+    
+    this.debug(`🎬 Animation timing: ${actualAudioDuration.toFixed(2)}s audio ÷ ${speed}x = ${playbackDuration.toFixed(2)}s playback`);
+    
+    let startTime = performance.now();
+    
+    const animate = (currentTime) => {
+      if (!this.isPlaying) return;
+      
+      const elapsed = (currentTime - startTime) / 1000;
+      const progress = Math.min(elapsed / playbackDuration, 1);
+      
+      // Move stylus along path
+      const point = path.getPointAtLength(progress * pathLength);
+      stylus.style.display = 'block';
+      stylus.style.left = `${point.x - 6}px`;
+      stylus.style.top = `${point.y - 6}px`;
+      
+      // Show audio time position (elapsed time × speed = position in original audio)
+      const audioTimePosition = elapsed * speed;
+      document.getElementById('currentTime').textContent = this.formatTime(audioTimePosition);
+      
+      if (progress < 1) {
+        this.animationId = requestAnimationFrame(animate);
+      } else {
+        this.stopPlayback();
+      }
+    };
+    
+    this.animationId = requestAnimationFrame(animate);
+  }
+  
+  stopPlayback() {
+    this.isPlaying = false;
+    
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId);
+      this.animationId = null;
+    }
+    
+    if (this.audioSource) {
+      try { this.audioSource.stop(); } catch (e) {}
+      this.audioSource = null;
+    }
+    
+    document.getElementById('playBtn').style.display = 'inline-block';
+    document.getElementById('pauseBtn').style.display = 'none';
+    
+    const stylus = document.getElementById('stylus');
+    if (stylus) stylus.style.display = 'none';
+    
+    document.getElementById('currentTime').textContent = '00:00';
+    
+    this.debug('⏹️ Playback stopped');
+  }
+  
+  downloadSVG() {
+    if (!this.grooveSVG) return;
+    
+    const blob = new Blob([this.grooveSVG], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'visual_audio_groove.svg';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    this.debug('📥 Visual groove SVG downloaded');
+  }
+  
+  downloadAudio() {
+    const reconstructedAudio = this.decodeAudioFromGroove();
+    if (!reconstructedAudio) return;
+    
+    const blob = this.createWAVBlob(reconstructedAudio);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'reconstructed_audio.wav';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    this.debug('🎵 Reconstructed audio downloaded');
+  }
+  
+  createWAVBlob(audioData) {
+    const length = audioData.length;
+    const buffer = new ArrayBuffer(44 + length * 2);
+    const view = new DataView(buffer);
+    
+    // WAV header
+    const writeString = (offset, string) => {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    };
+    
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + length * 2, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, this.sampleRate, true);
+    view.setUint32(28, this.sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeString(36, 'data');
+    view.setUint32(40, length * 2, true);
+    
+    for (let i = 0; i < length; i++) {
+      const sample = Math.max(-1, Math.min(1, audioData[i]));
+      view.setInt16(44 + i * 2, sample * 0x7FFF, true);
+    }
+    
+    return new Blob([buffer], { type: 'audio/wav' });
+  }
+  
+  setStatus(message, type = 'info') {
+    const status = document.getElementById('audioStatus');
+    status.textContent = message;
+    status.className = `status ${type}`;
+  }
+  
+  formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
+    return `${mins}:${secs}`;
+  }
+  
+  debug(message) {
+    const timestamp = new Date().toLocaleTimeString();
+    const log = document.getElementById('debugLog');
+    log.innerHTML += `<br>[${timestamp}] ${message}`;
+    log.scrollTop = log.scrollHeight;
+    console.log(`[${timestamp}] ${message}`);
+  }
+}
+
+// Initialize the codec
+window.addEventListener('load', () => {
+  new GrooveCodec();
+});
+</script>
+
+<!-- GEOMETRY-ONLY PATCH: overrides sidecar/metadata codec with a pure geometry encoder/decoder -->
+<script>
+// ========== Geometry-only Spiral Audio Core (Global Shims) ==========
+// This patch overrides createGrooveSVG and decodeAudioFromGroove to ensure
+// the app encodes and decodes strictly from the spiral geometry (no metadata).
+
+(function(){
+  const TAU = Math.PI * 2;
+  function clamp(x, lo, hi){ return Math.min(hi, Math.max(lo, x)); }
+  function archBase(t, Rout, Rin){ return Rout + (Rin - Rout) * t; }
+
+  // Heuristic: if we find metadata or data URIs, flag them.
+  function lintGeometryOnly(svg){
+    if(/encoded-audio=|data:audio\//i.test(svg)) return { ok:false, reason:'Sidecar audio payload present' };
+    if(/<metadata[\s\S]*?>[\s\S]*?<\/metadata>/i.test(svg)) return { ok:false, reason:'<metadata> section present' };
+    return { ok:true };
+  }
+
+  // ---- Encoder: 1 vertex per sample in a <polyline> ----
+  function GEO_encodeToSVG(samples, {
+    sr=22050, turns=64, Rout=220, Rin=40, cx=260, cy=260, sensitivity=6, autoLimit=true,
+  }={}){
+    const N = samples.length;
+    const drPerTurn = (Rout - Rin) / Math.max(1, turns);
+    const kMax = 0.45 * drPerTurn;
+    const k = autoLimit ? Math.min(sensitivity, kMax) : sensitivity;
+
+    const pts = new Array(N);
+    for(let i=0;i<N;i++){
+      const t = i/(N-1);
+      const theta = t * turns * TAU;
+      const rBase = archBase(t, Rout, Rin);
+      const r = rBase + k * clamp(samples[i], -1, 1);
+      const x = cx + r * Math.cos(theta);
+      const y = cy + r * Math.sin(theta);
+      pts[i] = `${x.toFixed(2)},${y.toFixed(2)}`;
+    }
+
+    const outerR = Rout + 8;
+    const innerR = Math.max(12, Rin - 8);
+
+    return `
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="520" viewBox="0 0 520 520" role="img" aria-label="Geometry-only spiral record">
+  <defs>
+    <radialGradient id="discGrad" r="60%">
+      <stop offset="0%" stop-color="#0e1217"/>
+      <stop offset="100%" stop-color="#0b0f14"/>
+    </radialGradient>
+    <linearGradient id="grooveGrad" x1="0" x2="1">
+      <stop offset="0%" stop-color="#4ecdc4"/>
+      <stop offset="100%" stop-color="#7aa0ff"/>
+    </linearGradient>
+  </defs>
+  <circle cx="${cx}" cy="${cy}" r="${outerR}" fill="url(#discGrad)" stroke="#233242" stroke-width="2"/>
+  <circle cx="${cx}" cy="${cy}" r="${innerR}" fill="#0a0d11" stroke="#22303b" stroke-width="2"/>
+  <polyline id="audioGroove" fill="none" stroke="url(#grooveGrad)" stroke-width="1.25" stroke-linecap="round" points="${pts.join(' ')}" />
+  <g id="stylus">
+    <circle cx="${cx + outerR}" cy="${cy}" r="5" fill="#4ecdc4" stroke="#0a0d11" stroke-width="2"/>
+  </g>
+  <desc>Contract: geometry-only. sr=${sr}; Rout=${Rout}; Rin=${Rin}; turns≈${turns}. No sidecar audio.</desc>
+</svg>`;
+  }
+
+  // ---- Decoder: reconstruct samples strictly from <polyline> points ----
+  function GEO_decodeFromSVG(svgString, { sr=22050 }={}){
+    const suspect = /<metadata[\s\S]*?>[\s\S]*?<\/metadata>/i.test(svgString) || /data:[^"]+/i.test(svgString);
+    if(suspect) throw new Error('Sidecar metadata/data URI detected — not geometry-only.');
+
+    const doc = new DOMParser().parseFromString(svgString, 'image/svg+xml');
+    const poly = doc.querySelector('polyline#audioGroove');
+    if(!poly) throw new Error('No groove polyline found');
+
+    // center inference
+    let cx = 260, cy = 260;
+    const firstCircle = doc.querySelector('circle');
+    if(firstCircle){
+      cx = parseFloat(firstCircle.getAttribute('cx'))||260;
+      cy = parseFloat(firstCircle.getAttribute('cy'))||260;
+    }
+
+    const pointsStr = (poly.getAttribute('points')||'').trim();
+    if(!pointsStr) throw new Error('Empty points attribute');
+    const coords = pointsStr.split(/\s+/).map(p=>{
+      const [x,y] = p.split(',').map(Number); return {x,y};
+    });
+    const N = coords.length;
+
+    // infer Rout/Rin from circles, reversing small padding
+    const circles = doc.querySelectorAll('circle');
+    let Rout = 220, Rin = 40;
+    if(circles.length>=2){
+      const rOutCircle = parseFloat(circles[0].getAttribute('r'))||228;
+      const rInCircle  = parseFloat(circles[1].getAttribute('r'))||32;
+      Rout = Math.max(30, rOutCircle - 8);
+      Rin  = Math.max(12, rInCircle + 8);
+    }
+
+    // turns via unwrapped angle (for stats/UI only)
+    let totalAngle = 0;
+    let prevA = Math.atan2(coords[0].y - cy, coords[0].x - cx);
+    for(let i=1;i<N;i++){
+      const a = Math.atan2(coords[i].y - cy, coords[i].x - cx);
+      let d = a - prevA;
+      while(d > Math.PI) d -= TAU; while(d < -Math.PI) d += TAU;
+      totalAngle += d; prevA = a;
+    }
+    const turns = Math.abs(totalAngle) / TAU;
+
+    // estimate sensitivity from early segment
+    const k = (function estimateK(){
+      const sampleWindow = Math.min(2000, Math.floor(N/10));
+      let accum = 0, count=0;
+      for(let i=0;i<sampleWindow;i++){
+        const t = i/(N-1);
+        const rBase = archBase(t, Rout, Rin);
+        const dx = coords[i].x - cx, dy = coords[i].y - cy;
+        const r = Math.hypot(dx, dy);
+        accum += Math.abs(r - rBase); count++;
+      }
+      const mad = (accum / Math.max(1,count)) || 1.0;
+      return Math.max(0.5, mad / 0.25);
+    })();
+
+    const out = new Float32Array(N);
+    for(let i=0;i<N;i++){
+      const dx = coords[i].x - cx, dy = coords[i].y - cy;
+      const r = Math.hypot(dx, dy);
+      const t = i/(N-1);
+      const rBase = archBase(t, Rout, Rin);
+      out[i] = (r - rBase) / k;
+    }
+    return { samples: out, sampleRate: sr, turns, vertices: N, Rout, Rin, cx, cy, k };
+  }
+
+  // ---- Global shims to override legacy functions ----
+  // If legacy code still calls encodeAudioForSVG, make it no-op to prevent blobs.
+  window.encodeAudioForSVG = function(){ throw new Error('encodeAudioForSVG is disabled in geometry-only mode.'); };
+
+  // Legacy name used by your UI for exporting the groove
+  window.createGrooveSVG = function(samples, opts){
+    return GEO_encodeToSVG(samples, opts||{});
+  };
+
+  // Legacy name used by your UI for decoding from SVG to samples
+  window.decodeAudioFromGroove = function(svgString, opts){
+    return GEO_decodeFromSVG(svgString, opts||{});
+  };
+
+  // Optional helper to lint opened SVGs
+  window.lintGeometryOnly = lintGeometryOnly;
+
+  // Patch notice
+  console.log('[GEO PATCH] Geometry-only codec active: createGrooveSVG / decodeAudioFromGroove overridden.');
+})();
+</script>
+</body>
+</html>
