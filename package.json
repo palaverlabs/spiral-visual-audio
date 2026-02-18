@@ -1,0 +1,12 @@
+{
+  "name": "spiral-visual-audio",
+  "version": "1.0.0",
+  "description": "Visual Audio Groove Codec — encodes audio into SVG spiral geometry",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
