@@ -1,4 +1,4 @@
-import { TAU, MU, PREEMPH_COEFF } from './constants.js';
+import { TAU, MU, PREEMPH_COEFF, RIAA_CORNER_HZ, RIAA_GAIN_DB } from './constants.js';
 
 export function clamp(x, lo, hi) { return Math.min(hi, Math.max(lo, x)); }
 export function archBase(t, Rout, Rin) { return Rout + (Rin - Rout) * t; }
@@ -58,6 +58,52 @@ export function deEmphasis(samples) {
   }
   return out;
 }
+
+// ─── RIAA equalization ──────────────────────────────────────────────────────
+// Implements the Audio EQ Cookbook high-shelf biquad (R. Bristow-Johnson).
+// highShelf(+G) and highShelf(-G) at the same corner are exact inverses,
+// so encode→decode round-trips to perfectly flat response.
+// Corner at 2122 Hz (RIAA τ3 = 75µs) with ±20 dB shelf:
+//   Encoding: bass untouched, treble boosted +20 dB → highs dominate groove
+//   Decoding: treble cut −20 dB → restores flat response AND suppresses
+//             high-frequency coordinate-quantization noise (same as vinyl surface noise)
+function applyBiquad(samples, b0, b1, b2, a1, a2) {
+  const out = new Float32Array(samples.length);
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const y = b0 * samples[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    x2 = x1; x1 = samples[i];
+    y2 = y1; y1 = y;
+    out[i] = y;
+  }
+  return out;
+}
+
+export function highShelf(samples, sampleRate, dBgain, cornerHz = RIAA_CORNER_HZ) {
+  const A = Math.pow(10, dBgain / 40); // amplitude = sqrt(power gain)
+  const w0 = 2 * Math.PI * cornerHz / sampleRate;
+  const cosW = Math.cos(w0);
+  const alpha = Math.sin(w0) / Math.sqrt(2); // S=1 shelf slope
+  const sqA2 = 2 * Math.sqrt(A) * alpha;
+
+  const b0 =      A * ((A + 1) + (A - 1) * cosW + sqA2);
+  const b1 = -2 * A * ((A - 1) + (A + 1) * cosW);
+  const b2 =      A * ((A + 1) + (A - 1) * cosW - sqA2);
+  const a0 =          ((A + 1) - (A - 1) * cosW + sqA2);
+  const a1 =  2 *     ((A - 1) - (A + 1) * cosW);
+  const a2 =          ((A + 1) - (A - 1) * cosW - sqA2);
+
+  return applyBiquad(samples, b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0);
+}
+
+export function riaaPreEmphasis(samples, sampleRate) {
+  return highShelf(samples, sampleRate, +RIAA_GAIN_DB, RIAA_CORNER_HZ);
+}
+
+export function riaaDeEmphasis(samples, sampleRate) {
+  return highShelf(samples, sampleRate, -RIAA_GAIN_DB, RIAA_CORNER_HZ);
+}
+// ────────────────────────────────────────────────────────────────────────────
 
 export function cubicInterpolate(y0, y1, y2, y3, t) {
   const a = -0.5 * y0 + 1.5 * y1 - 1.5 * y2 + 0.5 * y3;

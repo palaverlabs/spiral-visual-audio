@@ -1,5 +1,5 @@
-import { TAU, QUALITY_MAX_POINTS, DITHER_SCALE, RC_KERNEL_RADIUS, RC_KERNEL_SD_COEFF, FADE_LEN_FRACTION } from './constants.js';
-import { clamp, archBase, muLawCompress, muLawExpand, antiAliasFilter, preEmphasis, deEmphasis, cubicInterpolate } from './dsp.js';
+import { TAU, QUALITY_MAX_POINTS, FADE_LEN_FRACTION } from './constants.js';
+import { clamp, archBase, muLawCompress, muLawExpand, antiAliasFilter, preEmphasis, deEmphasis, riaaPreEmphasis, riaaDeEmphasis, cubicInterpolate } from './dsp.js';
 
 export function encodeToSVG(samples, opts = {}) {
   const {
@@ -22,7 +22,10 @@ export function encodeToSVG(samples, opts = {}) {
   const effectiveSr = Math.round(N / duration);
 
   const filtered = decimationFactor > 1 ? antiAliasFilter(samples, decimationFactor) : samples;
-  const emphasized = preEmphasis(filtered);
+  // RIAA-style pre-emphasis: +20 dB high shelf at 2122 Hz.
+  // Boosts treble before encoding so high-frequency content survives coordinate
+  // quantization — same principle as vinyl's RIAA recording curve.
+  const emphasized = riaaPreEmphasis(filtered, originalSr);
 
   let emphPeak = 0;
   for (let i = 0; i < emphasized.length; i++) {
@@ -44,20 +47,27 @@ export function encodeToSVG(samples, opts = {}) {
   const kMax = 0.45 * drPerTurn;
   const k = Math.min(sensitivity, kMax);
 
+  // Error diffusion instead of TPDF dither: feeds quantization error forward to
+  // the next sample, concentrating noise at high spiral frequencies. Those
+  // frequencies are already boosted by pre-emphasis, so de-emphasis on decode
+  // attenuates both signal and noise equally — net result is quieter artifacts.
   const pts = new Array(N);
   const groovePoints = new Float32Array(N * 2);
+  let xErr = 0, yErr = 0;
   for (let i = 0; i < N; i++) {
     const t = i / (N - 1);
     const theta = t * turns * TAU;
     const rBase = archBase(t, Rout, Rin);
     const r = rBase + k * clamp(downsampled[i], -1, 1);
-    const x = cx + r * Math.cos(theta);
-    const y = cy + r * Math.sin(theta);
-    const dx = (Math.random() + Math.random() - 1) * DITHER_SCALE;
-    const dy = (Math.random() + Math.random() - 1) * DITHER_SCALE;
-    pts[i] = `${(x + dx).toFixed(3)},${(y + dy).toFixed(3)}`;
-    groovePoints[i * 2] = x + dx;
-    groovePoints[i * 2 + 1] = y + dy;
+    const xRaw = cx + r * Math.cos(theta) + xErr;
+    const yRaw = cy + r * Math.sin(theta) + yErr;
+    const xQ = Math.round(xRaw * 1000) / 1000;
+    const yQ = Math.round(yRaw * 1000) / 1000;
+    xErr = xRaw - xQ;
+    yErr = yRaw - yQ;
+    pts[i] = `${xQ.toFixed(3)},${yQ.toFixed(3)}`;
+    groovePoints[i * 2] = xQ;
+    groovePoints[i * 2 + 1] = yQ;
   }
 
   const outerR = Rout + 8;
@@ -65,8 +75,8 @@ export function encodeToSVG(samples, opts = {}) {
   const ptsPerTurn = Math.round(N / turns);
   const sizeMB = (N * 17 / 1024 / 1024).toFixed(1);
   const pipeline = decimationFactor > 1
-    ? `pre-emph → anti-alias → ${decimationFactor.toFixed(1)}x decimate → mu-law → dither`
-    : 'pre-emph → mu-law → dither';
+    ? `RIAA → anti-alias → ${decimationFactor.toFixed(1)}x decimate → mu-law → err-diffuse`
+    : 'RIAA → mu-law → err-diffuse';
 
   const debugMsg = `Encoded ${totalSamples} samples → ${N} vertices [${pipeline}] (~${ptsPerTurn} pts/turn, ${turns} turns, k=${k.toFixed(4)}, sr=${effectiveSr}Hz, ~${sizeMB} MB)`;
 
@@ -80,7 +90,7 @@ export function encodeToSVG(samples, opts = {}) {
   <circle cx="${cx}" cy="${cy}" r="${outerR}" fill="url(#discGrad)" stroke="#233242" stroke-width="2"/>
   <circle cx="${cx}" cy="${cy}" r="${innerR}" fill="#0a0d11" stroke="#22303b" stroke-width="2"/>
   <polyline id="audioGroove" fill="none" stroke="#5ad8cf" stroke-width="0.8" stroke-linecap="round" points="${pts.join(' ')}" />
-  <desc>Geometry-only spiral audio. sr=${effectiveSr}; Rout=${Rout}; Rin=${Rin}; turns=${turns}; k=${k.toFixed(6)}; originalLength=${N}; mulaw=1; preemph=1.</desc>
+  <desc>Geometry-only spiral audio. sr=${effectiveSr}; Rout=${Rout}; Rin=${Rin}; turns=${turns}; k=${k.toFixed(6)}; originalLength=${N}; mulaw=1; riaa=1.</desc>
 </svg>`;
 
   return { svg, groovePoints, debugMsg };
@@ -140,7 +150,7 @@ export function decodeFromSVG(svgString, defaults = {}) {
   const turns = Math.abs(totalAngle) / TAU;
 
   let sr = 22050, originalLength = 0, storedK = 0;
-  let useMulaw = false, usePreemph = false;
+  let useMulaw = false, usePreemph = false, useRiaa = false;
   const descEl = doc.querySelector('desc');
   if (descEl) {
     const descText = descEl.textContent || '';
@@ -151,7 +161,8 @@ export function decodeFromSVG(svgString, defaults = {}) {
     const kMatch = descText.match(/k=([\d.]+)/);
     if (kMatch) storedK = parseFloat(kMatch[1]);
     useMulaw = /mulaw=1/.test(descText);
-    usePreemph = /preemph=1/.test(descText);
+    useRiaa = /riaa=1/.test(descText);
+    usePreemph = !useRiaa && /preemph=1/.test(descText); // legacy fallback
   }
 
   const k = storedK > 0 ? storedK : (() => {
@@ -178,26 +189,24 @@ export function decodeFromSVG(svgString, defaults = {}) {
     rawDecoded[i] = useMulaw ? muLawExpand(raw) : raw;
   }
 
-  let decoded = usePreemph ? deEmphasis(rawDecoded) : rawDecoded;
-
-  const rcRadius = RC_KERNEL_RADIUS;
-  const rcSize = rcRadius * 2 + 1;
-  const rcKernel = new Float32Array(rcSize);
-  let rcSum = 0;
-  for (let i = 0; i < rcSize; i++) {
-    rcKernel[i] = Math.exp(-0.5 * ((i - rcRadius) / (rcRadius * RC_KERNEL_SD_COEFF)) ** 2);
-    rcSum += rcKernel[i];
+  // De-emphasis: exact inverse of encoding pre-emphasis.
+  // riaa=1  → RIAA high-shelf −20 dB (new format, applied at original sample rate)
+  // preemph=1 only → legacy 0.97 first-order IIR (backward compat for old SVGs)
+  let decoded = rawDecoded;
+  if (useRiaa) {
+    decoded = riaaDeEmphasis(rawDecoded, sr);
+  } else if (usePreemph) {
+    decoded = deEmphasis(rawDecoded);
   }
-  for (let i = 0; i < rcSize; i++) rcKernel[i] /= rcSum;
 
+  // Gentle 3-tap smoother [0.25, 0.5, 0.25]: removes coordinate-quantization
+  // staircase artifacts while preserving audio content up to fs/4.
+  // Replaces the previous 13-tap Gaussian (σ=2.1) that was cutting off ~1 kHz.
   const smoothed = new Float32Array(N);
-  for (let i = 0; i < N; i++) {
-    let acc = 0;
-    for (let j = 0; j < rcSize; j++) {
-      const idx = Math.min(N - 1, Math.max(0, i + j - rcRadius));
-      acc += decoded[idx] * rcKernel[j];
-    }
-    smoothed[i] = acc;
+  smoothed[0] = decoded[0];
+  smoothed[N - 1] = decoded[N - 1];
+  for (let i = 1; i < N - 1; i++) {
+    smoothed[i] = 0.25 * decoded[i - 1] + 0.5 * decoded[i] + 0.25 * decoded[i + 1];
   }
   decoded = smoothed;
 
