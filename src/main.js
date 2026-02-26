@@ -143,7 +143,7 @@ class App {
         channels: 'Mono (Visual)',
         size: `${(file.size / 1024).toFixed(1)} KB`,
       });
-      this.renderer.preRenderGroove(this.groovePoints);
+      this.renderer.preRenderGroove(this.groovePoints, this._geom());
       this.renderer.drawDiscWithGroove(0, -1, this._geom());
       this._enablePlayback();
 

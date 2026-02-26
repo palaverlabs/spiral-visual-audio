@@ -1,5 +1,5 @@
-import { TAU, QUALITY_MAX_POINTS, FADE_LEN_FRACTION } from './constants.js';
-import { clamp, archBase, muLawCompress, muLawExpand, antiAliasFilter, preEmphasis, deEmphasis, riaaPreEmphasis, riaaDeEmphasis, cubicInterpolate } from './dsp.js';
+import { TAU, QUALITY_TARGET_SR, QUALITY_VERTEX_CAP, FADE_LEN_FRACTION, ENC_RIAA_CORNER_HZ, RIAA_CORNER_HZ, COORD_SCALE } from './constants.js';
+import { clamp, archBase, muLawCompress, muLawExpand, antiAliasFilter, preEmphasis, deEmphasis, riaaPreEmphasis, riaaDeEmphasis, softLimit, lanczos3Resample, cubicInterpolate } from './dsp.js';
 
 export function encodeToSVG(samples, opts = {}) {
   const {
@@ -14,18 +14,32 @@ export function encodeToSVG(samples, opts = {}) {
   } = opts;
 
   const totalSamples = samples.length;
-  const maxPoints = QUALITY_MAX_POINTS[quality - 1];
-  const N = Math.min(totalSamples, maxPoints);
-  const decimationFactor = totalSamples / N;
-
   const duration = totalSamples / originalSr;
+
+  // Compute N from target effective SR so bandwidth is consistent for any song length.
+  const targetSr = QUALITY_TARGET_SR[quality - 1];
+  const N = Math.min(Math.round(targetSr * duration), QUALITY_VERTEX_CAP, totalSamples);
+  const decimationFactor = totalSamples / N;
   const effectiveSr = Math.round(N / duration);
 
+  // Anti-alias before decimation.
   const filtered = decimationFactor > 1 ? antiAliasFilter(samples, decimationFactor) : samples;
-  // RIAA-style pre-emphasis: +20 dB high shelf at 2122 Hz.
-  // Boosts treble before encoding so high-frequency content survives coordinate
-  // quantization — same principle as vinyl's RIAA recording curve.
-  const emphasized = riaaPreEmphasis(filtered, originalSr);
+
+  // Decimate first.
+  const decimated = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const srcIdx = Math.min(Math.floor(i * decimationFactor), totalSamples - 1);
+    decimated[i] = clamp(filtered[srcIdx], -1, 1);
+  }
+
+  // Soft limit before pre-emphasis: prevents one loud transient from globally crushing
+  // the post-emphasis normalization gain, which would reduce all quieter content.
+  const limited = softLimit(decimated, effectiveSr);
+
+  // RIAA-style pre-emphasis at effectiveSr with ENC_RIAA_CORNER_HZ (1 kHz).
+  // Shelf at 1 kHz covers the full 1–5 kHz presence/clarity region (vs 2.1 kHz which
+  // left 1–2 kHz unprotected through coordinate quantization).
+  const emphasized = riaaPreEmphasis(limited, effectiveSr, ENC_RIAA_CORNER_HZ);
 
   let emphPeak = 0;
   for (let i = 0; i < emphasized.length; i++) {
@@ -37,60 +51,70 @@ export function encodeToSVG(samples, opts = {}) {
     for (let i = 0; i < emphasized.length; i++) emphasized[i] *= scale;
   }
 
-  const downsampled = new Float32Array(N);
+  const compressed = new Float32Array(N);
   for (let i = 0; i < N; i++) {
-    const srcIdx = Math.min(Math.floor(i * decimationFactor), totalSamples - 1);
-    downsampled[i] = muLawCompress(clamp(emphasized[srcIdx], -1, 1));
+    compressed[i] = muLawCompress(emphasized[i]);
   }
 
   const drPerTurn = (Rout - Rin) / Math.max(1, turns);
   const kMax = 0.45 * drPerTurn;
   const k = Math.min(sensitivity, kMax);
 
-  // Error diffusion instead of TPDF dither: feeds quantization error forward to
-  // the next sample, concentrating noise at high spiral frequencies. Those
-  // frequencies are already boosted by pre-emphasis, so de-emphasis on decode
-  // attenuates both signal and noise equally — net result is quieter artifacts.
+  // Scale all geometry to COORD_SCALE (100x) for integer SVG coordinates.
+  // Each integer step = 1/COORD_SCALE original unit → ~14.7-bit radial amplitude resolution.
+  const s = COORD_SCALE;
+  const cx_s = Math.round(cx * s);
+  const cy_s = Math.round(cy * s);
+  const Rout_s = Rout * s;
+  const Rin_s = Rin * s;
+  const k_s = k * s;
+
+  // Error diffusion coordinate quantization (carry-forward, provably stable).
+  // Feeds unresolved fractional error into the next sample, concentrating noise
+  // at high spatial frequencies where RIAA de-emphasis attenuates it.
   const pts = new Array(N);
   const groovePoints = new Float32Array(N * 2);
   let xErr = 0, yErr = 0;
+
   for (let i = 0; i < N; i++) {
     const t = i / (N - 1);
     const theta = t * turns * TAU;
-    const rBase = archBase(t, Rout, Rin);
-    const r = rBase + k * clamp(downsampled[i], -1, 1);
-    const xRaw = cx + r * Math.cos(theta) + xErr;
-    const yRaw = cy + r * Math.sin(theta) + yErr;
-    const xQ = Math.round(xRaw * 1000) / 1000;
-    const yQ = Math.round(yRaw * 1000) / 1000;
+    const rBase_s = archBase(t, Rout_s, Rin_s);
+    const r_s = rBase_s + k_s * clamp(compressed[i], -1, 1);
+
+    const xRaw = cx_s + r_s * Math.cos(theta) + xErr;
+    const yRaw = cy_s + r_s * Math.sin(theta) + yErr;
+    const xQ = Math.round(xRaw);
+    const yQ = Math.round(yRaw);
     xErr = xRaw - xQ;
     yErr = yRaw - yQ;
-    pts[i] = `${xQ.toFixed(3)},${yQ.toFixed(3)}`;
-    groovePoints[i * 2] = xQ;
-    groovePoints[i * 2 + 1] = yQ;
+
+    pts[i] = `${xQ},${yQ}`;
+    groovePoints[i * 2]     = xQ / s;  // 1x space for renderer
+    groovePoints[i * 2 + 1] = yQ / s;
   }
 
-  const outerR = Rout + 8;
-  const innerR = Math.max(12, Rin - 8);
+  const outerR_s = Math.round((Rout + 8) * s);
+  const innerR_s = Math.max(12 * s, Math.round((Rin - 8) * s));
   const ptsPerTurn = Math.round(N / turns);
-  const sizeMB = (N * 17 / 1024 / 1024).toFixed(1);
+  const sizeMB = (N * 10 / 1024 / 1024).toFixed(1);  // integer coords avg ~10 chars/pt
   const pipeline = decimationFactor > 1
-    ? `RIAA → anti-alias → ${decimationFactor.toFixed(1)}x decimate → mu-law → err-diffuse`
-    : 'RIAA → mu-law → err-diffuse';
+    ? `anti-alias → ${decimationFactor.toFixed(1)}x decimate → soft-limit → RIAA@${ENC_RIAA_CORNER_HZ}Hz → mu-law → err-diffuse`
+    : `soft-limit → RIAA@${ENC_RIAA_CORNER_HZ}Hz → mu-law → err-diffuse`;
 
   const debugMsg = `Encoded ${totalSamples} samples → ${N} vertices [${pipeline}] (~${ptsPerTurn} pts/turn, ${turns} turns, k=${k.toFixed(4)}, sr=${effectiveSr}Hz, ~${sizeMB} MB)`;
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="520" height="520" viewBox="0 0 520 520" role="img" aria-label="Geometry-only spiral record">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="520" height="520" viewBox="0 0 ${520 * s} ${520 * s}" role="img" aria-label="Geometry-only spiral record">
   <defs>
     <radialGradient id="discGrad" r="60%">
       <stop offset="0%" stop-color="#0e1217"/>
       <stop offset="100%" stop-color="#0b0f14"/>
     </radialGradient>
   </defs>
-  <circle cx="${cx}" cy="${cy}" r="${outerR}" fill="url(#discGrad)" stroke="#233242" stroke-width="2"/>
-  <circle cx="${cx}" cy="${cy}" r="${innerR}" fill="#0a0d11" stroke="#22303b" stroke-width="2"/>
-  <polyline id="audioGroove" fill="none" stroke="#5ad8cf" stroke-width="0.8" stroke-linecap="round" points="${pts.join(' ')}" />
-  <desc>Geometry-only spiral audio. sr=${effectiveSr}; Rout=${Rout}; Rin=${Rin}; turns=${turns}; k=${k.toFixed(6)}; originalLength=${N}; mulaw=1; riaa=1.</desc>
+  <circle cx="${cx_s}" cy="${cy_s}" r="${outerR_s}" fill="url(#discGrad)" stroke="#233242" stroke-width="${2 * s}"/>
+  <circle cx="${cx_s}" cy="${cy_s}" r="${innerR_s}" fill="#0a0d11" stroke="#22303b" stroke-width="${2 * s}"/>
+  <polyline id="audioGroove" fill="none" stroke="#5ad8cf" stroke-width="${0.8 * s}" stroke-linecap="round" points="${pts.join(' ')}" />
+  <desc>Geometry-only spiral audio. sr=${effectiveSr}; Rout=${Rout}; Rin=${Rin}; turns=${turns}; k=${k.toFixed(6)}; originalLength=${N}; mulaw=1; riaa=1; riaaHz=${ENC_RIAA_CORNER_HZ}; scale=${s}.</desc>
 </svg>`;
 
   return { svg, groovePoints, debugMsg };
@@ -108,13 +132,37 @@ export function decodeFromSVG(svgString, defaults = {}) {
   const poly = doc.querySelector('polyline#audioGroove');
   if (!poly) throw new Error('No groove polyline found in SVG');
 
+  // Parse desc first — coordScale and riaaHz are needed before any coordinate parsing.
+  let sr = 22050, originalLength = 0, storedK = 0;
+  let useMulaw = false, useRiaa = false, usePreemph = false;
+  let coordScale = 1, decodeRiaaHz = RIAA_CORNER_HZ;
+  const descEl = doc.querySelector('desc');
+  if (descEl) {
+    const descText = descEl.textContent || '';
+    const srMatch = descText.match(/sr=(\d+)/);
+    if (srMatch) sr = parseInt(srMatch[1]);
+    const olMatch = descText.match(/originalLength=(\d+)/);
+    if (olMatch) originalLength = parseInt(olMatch[1]);
+    const kMatch = descText.match(/k=([\d.]+)/);
+    if (kMatch) storedK = parseFloat(kMatch[1]);
+    useMulaw = /mulaw=1/.test(descText);
+    useRiaa = /riaa=1/.test(descText);
+    usePreemph = !useRiaa && /preemph=1/.test(descText);
+    const scaleMatch = descText.match(/scale=(\d+)/);
+    if (scaleMatch) coordScale = parseInt(scaleMatch[1]);
+    const riaaHzMatch = descText.match(/riaaHz=(\d+)/);
+    if (riaaHzMatch) decodeRiaaHz = parseInt(riaaHzMatch[1]);
+  }
+
+  // Parse cx, cy from first circle (divide by coordScale to normalize to 1x space).
   let cx = defaultCx, cy = defaultCy;
   const firstCircle = doc.querySelector('circle');
   if (firstCircle) {
-    cx = parseFloat(firstCircle.getAttribute('cx')) || defaultCx;
-    cy = parseFloat(firstCircle.getAttribute('cy')) || defaultCy;
+    cx = (parseFloat(firstCircle.getAttribute('cx')) || defaultCx * coordScale) / coordScale;
+    cy = (parseFloat(firstCircle.getAttribute('cy')) || defaultCy * coordScale) / coordScale;
   }
 
+  // Parse polyline points, normalizing to 1x space.
   const pointsStr = (poly.getAttribute('points') || '').trim();
   if (!pointsStr) throw new Error('Empty points attribute in polyline');
   const rawParts = pointsStr.split(/\s+/);
@@ -122,19 +170,20 @@ export function decodeFromSVG(svgString, defaults = {}) {
   const groovePoints = new Float32Array(rawParts.length * 2);
   for (let i = 0; i < rawParts.length; i++) {
     const [x, y] = rawParts[i].split(',').map(Number);
-    coords[i] = { x, y };
-    groovePoints[i * 2] = x;
-    groovePoints[i * 2 + 1] = y;
+    coords[i] = { x: x / coordScale, y: y / coordScale };
+    groovePoints[i * 2]     = x / coordScale;
+    groovePoints[i * 2 + 1] = y / coordScale;
   }
   const N = coords.length;
 
+  // Parse Rout, Rin from circles (normalize to 1x space).
   const circles = doc.querySelectorAll('circle');
   let Rout = defaultRout, Rin = defaultRin;
   if (circles.length >= 2) {
-    const rOutCircle = parseFloat(circles[0].getAttribute('r')) || 228;
-    const rInCircle = parseFloat(circles[1].getAttribute('r')) || 32;
+    const rOutCircle = (parseFloat(circles[0].getAttribute('r')) || 228 * coordScale) / coordScale;
+    const rInCircle  = (parseFloat(circles[1].getAttribute('r')) || 32 * coordScale)  / coordScale;
     Rout = Math.max(30, rOutCircle - 8);
-    Rin = Math.max(12, rInCircle + 8);
+    Rin  = Math.max(12, rInCircle  + 8);
   }
 
   let totalAngle = 0;
@@ -148,22 +197,6 @@ export function decodeFromSVG(svgString, defaults = {}) {
     prevA = a;
   }
   const turns = Math.abs(totalAngle) / TAU;
-
-  let sr = 22050, originalLength = 0, storedK = 0;
-  let useMulaw = false, usePreemph = false, useRiaa = false;
-  const descEl = doc.querySelector('desc');
-  if (descEl) {
-    const descText = descEl.textContent || '';
-    const srMatch = descText.match(/sr=(\d+)/);
-    if (srMatch) sr = parseInt(srMatch[1]);
-    const olMatch = descText.match(/originalLength=(\d+)/);
-    if (olMatch) originalLength = parseInt(olMatch[1]);
-    const kMatch = descText.match(/k=([\d.]+)/);
-    if (kMatch) storedK = parseFloat(kMatch[1]);
-    useMulaw = /mulaw=1/.test(descText);
-    useRiaa = /riaa=1/.test(descText);
-    usePreemph = !useRiaa && /preemph=1/.test(descText); // legacy fallback
-  }
 
   const k = storedK > 0 ? storedK : (() => {
     const sampleWindow = Math.min(2000, Math.floor(N / 10));
@@ -190,39 +223,27 @@ export function decodeFromSVG(svgString, defaults = {}) {
   }
 
   // De-emphasis: exact inverse of encoding pre-emphasis.
-  // riaa=1  → RIAA high-shelf −20 dB (new format, applied at original sample rate)
-  // preemph=1 only → legacy 0.97 first-order IIR (backward compat for old SVGs)
+  // riaa=1 with riaaHz=N → high-shelf at stored corner frequency
+  // preemph=1 only       → legacy 0.97 first-order IIR (backward compat for old SVGs)
   let decoded = rawDecoded;
   if (useRiaa) {
-    decoded = riaaDeEmphasis(rawDecoded, sr);
+    decoded = riaaDeEmphasis(rawDecoded, sr, decodeRiaaHz);
   } else if (usePreemph) {
     decoded = deEmphasis(rawDecoded);
   }
 
-  // Gentle 3-tap smoother [0.25, 0.5, 0.25]: removes coordinate-quantization
-  // staircase artifacts while preserving audio content up to fs/4.
-  // Replaces the previous 13-tap Gaussian (σ=2.1) that was cutting off ~1 kHz.
-  const smoothed = new Float32Array(N);
-  smoothed[0] = decoded[0];
-  smoothed[N - 1] = decoded[N - 1];
-  for (let i = 1; i < N - 1; i++) {
-    smoothed[i] = 0.25 * decoded[i - 1] + 0.5 * decoded[i] + 0.25 * decoded[i + 1];
-  }
-  decoded = smoothed;
+  // Note: the 3-tap [0.25, 0.5, 0.25] smoother that was here is intentionally removed.
+  // It was cutting ~2 kHz of content at 11 kHz effective SR. The Blackman-sinc
+  // anti-imaging filter below already handles staircase artifacts from upsampling.
 
   let out = decoded;
   if (originalLength > 0 && originalLength !== N) {
-    out = new Float32Array(originalLength);
-    for (let i = 0; i < originalLength; i++) {
-      const srcIdx = (i / originalLength) * (N - 1);
-      const idx = Math.floor(srcIdx);
-      const frac = srcIdx - idx;
-      const i0 = Math.max(0, idx - 1);
-      const i1 = idx;
-      const i2 = Math.min(N - 1, idx + 1);
-      const i3 = Math.min(N - 1, idx + 2);
-      out[i] = cubicInterpolate(decoded[i0], decoded[i1], decoded[i2], decoded[i3], frac);
-    }
+    // Lanczos-3 resampler: sharper rolloff (-30 dB stopband) and flatter passband
+    // (±0.2 dB) vs the previous Catmull-Rom cubic (±1.5 dB, -13 dB stopband).
+    out = lanczos3Resample(decoded, originalLength);
+    // Anti-imaging: remove spectral images created by the upsampling process.
+    const upsampleRatio = originalLength / N;
+    if (upsampleRatio > 1) out = antiAliasFilter(out, upsampleRatio);
   }
 
   let dcSum = 0;
