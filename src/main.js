@@ -76,7 +76,7 @@ class App {
     const audioFile = document.getElementById('audioFile');
     uploadArea.addEventListener('click', () => audioFile.click());
     uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
-    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+    uploadArea.addEventListener('dragleave', (e) => { if (!uploadArea.contains(e.relatedTarget)) uploadArea.classList.remove('dragover'); });
     uploadArea.addEventListener('drop', (e) => {
       e.preventDefault();
       uploadArea.classList.remove('dragover');
@@ -102,6 +102,7 @@ class App {
     });
     svgFile.addEventListener('change', (e) => { if (e.target.files[0]) this.loadGrooveFile(e.target.files[0]); });
 
+    document.getElementById('loadSvgBtn')?.addEventListener('click', () => document.getElementById('svgFile').click());
     document.getElementById('generateGroove').addEventListener('click', () => this.generateGroove());
     document.getElementById('playBtn').addEventListener('click', () => this.startPlayback());
     document.getElementById('pauseBtn').addEventListener('click', () => this.playback.stop());
@@ -186,6 +187,7 @@ class App {
         size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
       });
       document.getElementById('generateGroove').disabled = false;
+      document.getElementById('dropOverlay')?.classList.add('hidden');
       this.debug(`Audio loaded: ${this.originalAudio.length} samples, ${this.sampleRate}Hz, ${this.duration.toFixed(2)}s${this.originalAudioR ? ' [stereo]' : ''}`);
     } catch (error) {
       this.debug(`Failed to load audio: ${error.message}`);
@@ -228,6 +230,7 @@ class App {
       this.renderer.drawDiscWithGroove(0, -1, this._geom());
       this.renderer.canvas.style.cursor = 'grab';
       this._enablePlayback();
+      document.getElementById('dropOverlay')?.classList.add('hidden');
 
       const genBtn = document.getElementById('generateGroove');
       genBtn.textContent = 'RE-ENC';
@@ -461,7 +464,7 @@ class App {
   _setStatus(message, type = 'info') {
     const el = document.getElementById('audioStatus');
     el.textContent = message;
-    el.className = `lcd-status ${type}`;
+    el.className = `status-line ${type}`;
   }
 
   _statusError(message) {

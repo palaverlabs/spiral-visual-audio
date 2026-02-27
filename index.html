@@ -3,136 +3,78 @@
 <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-  <title>Spiral Audio · Groove Codec</title>
+  <title>Spiral Audio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 </head>
 <body>
-<div class="container">
-  <div class="device">
+<div class="app">
 
-    <!-- LEFT: controls -->
-    <div class="device-left">
-      <div class="device-brand">
-        <img src="/spiral-audio-logo text.png" alt="Spiral Audio" class="brand-logo">
+  <header class="app-header">
+    <img src="/spiral-audio-logo text.png" alt="Spiral Audio" class="logo">
+    <div class="skin-switcher">
+      <button class="skin-dot" id="skinClassic" title="Classic"  style="--dot:#4ecdc4"></button>
+      <button class="skin-dot" id="skinVagc77"  title="VAGC-77"  style="--dot:#00e5ff"></button>
+      <button class="skin-dot" id="skinOmitron" title="OMITRON"  style="--dot:#00c8e8"></button>
+      <button class="skin-dot" id="skinOwl"     title="OWL"      style="--dot:#d4880a"></button>
+      <button class="skin-dot" id="skinEq"      title="EQ"       style="--dot:#00e060"></button>
+    </div>
+  </header>
+
+  <section class="disc-section">
+    <div class="disc-wrap" id="uploadArea">
+      <canvas id="grooveCanvas" width="1000" height="1000"></canvas>
+      <div class="drop-overlay" id="dropOverlay">
+        <div class="drop-icon">&#9835;</div>
+        <div class="drop-title">Drop audio here</div>
+        <div class="drop-sub">or click to browse &nbsp;·&nbsp; drag SVG to load groove</div>
       </div>
+      <input type="file" id="audioFile" accept="audio/*">
+    </div>
+  </section>
 
-      <div class="device-lcd">
-        <div class="lcd-screen">
-          <div class="lcd-time">
-            <span id="currentTime">00:00</span>
-            <span class="lcd-sep"> / </span>
-            <span id="totalTime">00:00</span>
-          </div>
-          <div class="lcd-status info" id="audioStatus">READY</div>
-        </div>
-      </div>
+  <section class="app-controls">
 
-      <div class="device-transport">
-        <div class="transport-primary">
-          <button class="hw-btn hw-btn--play" id="playBtn" disabled>&#9654;</button>
-          <button class="hw-btn hw-btn--play" id="pauseBtn" disabled style="display:none;">&#9646;&#9646;</button>
-        </div>
-        <div class="transport-secondary">
-          <button class="hw-btn hw-btn--sm" id="generateGroove" disabled>ENCODE</button>
-          <button class="hw-btn hw-btn--sm" id="downloadSVG" disabled>SVG</button>
-          <button class="hw-btn hw-btn--sm" id="downloadAudio" disabled>WAV</button>
-        </div>
-      </div>
-
-      <div class="device-row">
-        <span class="hw-label">SPEED</span>
-        <input type="range" id="speedSlider" min="0.25" max="2" value="1" step="0.25" class="hw-slider">
-        <span class="hw-value" id="speedValue">1x</span>
-      </div>
-
-      <div class="device-tabs">
-        <button class="tab-btn active" data-tab="load">LOAD</button>
-        <button class="tab-btn" data-tab="tune">TUNE</button>
-        <button class="tab-btn" data-tab="info">INFO</button>
-        <button class="tab-btn" data-tab="skin">SKIN</button>
-      </div>
-
-      <div class="tab-panels">
-
-        <!-- LOAD tab -->
-        <div class="tab-panel active" id="tab-load">
-          <div class="upload-area" id="uploadArea">
-            <div class="upload-icon">&#127925;</div>
-            <div class="upload-title">DROP AUDIO</div>
-            <div class="upload-sub">or click to browse</div>
-            <input type="file" id="audioFile" accept="audio/*">
-          </div>
-          <div class="upload-area upload-area--svg" id="svgUploadArea">
-            <div class="upload-icon">&#127744;</div>
-            <div class="upload-title upload-svg-label">DROP GROOVE SVG</div>
-            <div class="upload-sub">or click to load</div>
-            <input type="file" id="svgFile" accept=".svg,image/svg+xml">
-          </div>
-        </div>
-
-        <!-- TUNE tab -->
-        <div class="tab-panel" id="tab-tune">
-          <div class="device-row">
-            <span class="hw-label">QUALITY</span>
-            <input type="range" id="qualitySlider" min="1" max="5" value="5" step="1" class="hw-slider">
-            <span class="hw-value" id="qualityValue">5</span>
-          </div>
-          <div class="device-row">
-            <span class="hw-label">TURNS</span>
-            <input type="range" id="turnsSlider" min="3" max="80" value="80" step="1" class="hw-slider">
-            <span class="hw-value" id="turnsValue">80</span>
-          </div>
-          <div class="device-row">
-            <span class="hw-label">SENS</span>
-            <input type="range" id="sensitivitySlider" min="1" max="10" value="10" step="1" class="hw-slider">
-            <span class="hw-value" id="sensitivityValue">10</span>
-          </div>
-        </div>
-
-        <!-- INFO tab -->
-        <div class="tab-panel" id="tab-info">
-          <div class="audio-info" id="audioInfo">
-            <div class="info-item"><div class="info-label">DURATION</div><div class="info-value" id="infoDuration">--</div></div>
-            <div class="info-item"><div class="info-label">RATE</div><div class="info-value" id="infoSampleRate">--</div></div>
-            <div class="info-item"><div class="info-label">CH</div><div class="info-value" id="infoChannels">--</div></div>
-            <div class="info-item"><div class="info-label">SIZE</div><div class="info-value" id="infoSize">--</div></div>
-          </div>
-        </div>
-
-        <!-- SKIN tab -->
-        <div class="tab-panel" id="tab-skin">
-          <div class="skin-presets">
-            <button class="hw-btn hw-btn--sm" id="skinClassic">CLASSIC</button>
-            <button class="hw-btn hw-btn--sm" id="skinVagc77">VAGC-77</button>
-            <button class="hw-btn hw-btn--sm" id="skinOmitron">OMITRON</button>
-            <button class="hw-btn hw-btn--sm" id="skinOwl">OWL</button>
-            <button class="hw-btn hw-btn--sm" id="skinEq">EQ</button>
-          </div>
-          <div class="skin-file-row">
-            <button class="hw-btn hw-btn--sm" id="skinLoad">LOAD</button>
-            <button class="hw-btn hw-btn--sm" id="skinExport">EXPORT</button>
-            <input type="file" id="skinFileInput" accept=".json,.skin.json">
-          </div>
-        </div>
-
-      </div><!-- .tab-panels -->
-    </div><!-- .device-left -->
-
-    <!-- RIGHT: disc -->
-    <div class="device-right">
-      <div class="disc-bezel">
-        <canvas id="grooveCanvas" width="1000" height="1000"></canvas>
-      </div>
+    <div class="transport">
+      <button class="play-btn" id="playBtn" disabled>&#9654;</button>
+      <button class="play-btn" id="pauseBtn" disabled style="display:none">&#9646;&#9646;</button>
+      <span class="time-display">
+        <span id="currentTime">0:00</span>
+        <span class="t-sep"> / </span>
+        <span id="totalTime">0:00</span>
+      </span>
+      <button class="action-btn" id="generateGroove" disabled>ENCODE</button>
+      <button class="action-btn" id="downloadSVG" disabled>↓ SVG</button>
+      <button class="action-btn" id="downloadAudio" disabled>↓ WAV</button>
     </div>
 
-  </div><!-- .device -->
+    <div class="speed-row">
+      <span class="ctrl-label">Speed</span>
+      <input type="range" id="speedSlider" min="0.25" max="2" value="1" step="0.25" class="ctrl-slider">
+      <span class="ctrl-value" id="speedValue">1×</span>
+      <button class="text-btn" id="loadSvgBtn">Load groove SVG</button>
+    </div>
 
-  <div class="debug" id="debugLog">
-    Visual Audio Groove Codec ready<br>
-    &rarr; Upload audio or drop an SVG groove to begin
-  </div>
+    <div class="status-line info" id="audioStatus">Ready — drop a file or click the disc</div>
+
+  </section>
+
 </div>
+
+<!-- Hidden functional elements required by JS -->
+<input type="file" id="svgFile" accept=".svg,image/svg+xml">
+<div id="svgUploadArea" style="display:none"></div>
+<input type="range" id="qualitySlider"     min="1"  max="5"  value="5"  step="1"    style="display:none"><span id="qualityValue"     style="display:none">5</span>
+<input type="range" id="turnsSlider"       min="3"  max="80" value="80" step="1"    style="display:none"><span id="turnsValue"       style="display:none">80</span>
+<input type="range" id="sensitivitySlider" min="1"  max="10" value="10" step="1"    style="display:none"><span id="sensitivityValue" style="display:none">10</span>
+<div id="audioInfo" style="display:none">
+  <span id="infoDuration"></span><span id="infoSampleRate"></span>
+  <span id="infoChannels"></span><span id="infoSize"></span>
+</div>
+<button id="skinLoad"   style="display:none"></button>
+<button id="skinExport" style="display:none"></button>
+<input  type="file" id="skinFileInput" accept=".json,.skin.json" style="display:none">
+<div id="debugLog" style="display:none"></div>
 
 <script type="module" src="/src/main.js"></script>
 </body>
