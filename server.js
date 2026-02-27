@@ -3,8 +3,9 @@ const fs = require('fs');
 const path = require('path');
 
 const server = http.createServer((req, res) => {
-  let filePath = req.url === '/' ? '/index.html' : req.url;
-  filePath = path.join(__dirname, filePath);
+  const urlPath = req.url.split('?')[0];
+  let filePath = urlPath === '/' ? '/index.html' : urlPath;
+  filePath = path.join(__dirname, 'dist', filePath);
   
   const ext = path.extname(filePath);
   const mimeTypes = {
