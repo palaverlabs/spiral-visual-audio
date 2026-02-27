@@ -95,7 +95,7 @@ class App {
   _bindUI() {
     const uploadArea = document.getElementById('uploadArea');
     const audioFile = document.getElementById('audioFile');
-    uploadArea.addEventListener('click', () => audioFile.click());
+    uploadArea.addEventListener('click', () => { if (!this.groovePoints) audioFile.click(); });
     uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
     uploadArea.addEventListener('dragleave', (e) => { if (!uploadArea.contains(e.relatedTarget)) uploadArea.classList.remove('dragover'); });
     uploadArea.addEventListener('drop', (e) => {
