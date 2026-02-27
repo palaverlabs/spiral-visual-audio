@@ -130,7 +130,8 @@ body {
   gap: 6px;
   pointer-events: none;
   transition: opacity 0.3s;
-  border: 1.5px dashed rgba(255,255,255,0.12);
+  border: 1.5px dashed rgba(255,255,255,0.18);
+  background: rgba(0,0,0,0.45);
 }
 
 .drop-overlay.hidden {
@@ -140,20 +141,22 @@ body {
 
 .drop-icon {
   font-size: 2em;
-  opacity: 0.3;
+  opacity: 0.7;
   margin-bottom: 4px;
 }
 
 .drop-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: rgba(255,255,255,0.45);
-  letter-spacing: 0.04em;
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.9);
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.8);
 }
 
 .drop-sub {
   font-size: 11px;
-  color: rgba(255,255,255,0.25);
+  color: rgba(255,255,255,0.55);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
 }
 
 .disc-wrap.dragover .drop-overlay {
