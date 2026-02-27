@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>Spiral Audio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <script type="module" crossorigin src="/assets/index-7NJFRKj6.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CgBJGitN.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="app-header">
+    <img src="/spiral-audio-logo text.png" alt="Spiral Audio" class="logo">
+    <div class="skin-switcher">
+      <button class="skin-dot" id="skinClassic" title="Classic"  style="--dot:#4ecdc4"></button>
+      <button class="skin-dot" id="skinVagc77"  title="VAGC-77"  style="--dot:#00e5ff"></button>
+      <button class="skin-dot" id="skinOmitron" title="OMITRON"  style="--dot:#00c8e8"></button>
+      <button class="skin-dot" id="skinOwl"     title="OWL"      style="--dot:#d4880a"></button>
+      <button class="skin-dot" id="skinEq"      title="EQ"       style="--dot:#00e060"></button>
+    </div>
+  </header>
+
+  <section class="disc-section">
+    <div class="disc-wrap" id="uploadArea">
+      <canvas id="grooveCanvas" width="1000" height="1000"></canvas>
+      <div class="drop-overlay" id="dropOverlay">
+        <div class="drop-icon">&#9835;</div>
+        <div class="drop-title">Drop audio here</div>
+        <div class="drop-sub">or click to browse &nbsp;·&nbsp; drag SVG to load groove</div>
+      </div>
+      <input type="file" id="audioFile" accept="audio/*">
+    </div>
+  </section>
+
+  <section class="app-controls">
+
+    <div class="transport">
+      <div class="play-wrap" id="playWrap">
+        <div class="play-ring"></div>
+        <button class="play-btn" id="playBtn" disabled>&#9654;</button>
+        <button class="play-btn" id="pauseBtn" disabled style="display:none">&#9646;&#9646;</button>
+      </div>
+      <span class="time-display">
+        <span id="currentTime">0:00</span>
+        <span class="t-sep"> / </span>
+        <span id="totalTime">0:00</span>
+      </span>
+      <button class="action-btn" id="generateGroove" disabled>ENCODE</button>
+      <button class="action-btn" id="downloadSVG" disabled>↓ SVG</button>
+      <button class="action-btn" id="downloadAudio" disabled>↓ WAV</button>
+    </div>
+
+    <div class="speed-row">
+      <span class="ctrl-label">Speed</span>
+      <input type="range" id="speedSlider" min="0.25" max="2" value="1" step="0.25" class="ctrl-slider">
+      <span class="ctrl-value" id="speedValue">1×</span>
+      <button class="text-btn" id="loadSvgBtn">Load groove SVG</button>
+    </div>
+
+    <div class="status-line info" id="audioStatus">Ready — drop a file or click the disc</div>
+
+  </section>
+
+</div>
+
+<!-- Hidden functional elements required by JS -->
+<input type="file" id="svgFile" accept=".svg,image/svg+xml" style="display:none">
+<div id="svgUploadArea" style="display:none"></div>
+<input type="range" id="qualitySlider"     min="1"  max="5"  value="5"  step="1"    style="display:none"><span id="qualityValue"     style="display:none">5</span>
+<input type="range" id="turnsSlider"       min="3"  max="80" value="80" step="1"    style="display:none"><span id="turnsValue"       style="display:none">80</span>
+<input type="range" id="sensitivitySlider" min="1"  max="10" value="10" step="1"    style="display:none"><span id="sensitivityValue" style="display:none">10</span>
+<div id="audioInfo" style="display:none">
+  <span id="infoDuration"></span><span id="infoSampleRate"></span>
+  <span id="infoChannels"></span><span id="infoSize"></span>
+</div>
+<button id="skinLoad"   style="display:none"></button>
+<button id="skinExport" style="display:none"></button>
+<input  type="file" id="skinFileInput" accept=".json,.skin.json" style="display:none">
+<div id="debugLog" style="display:none"></div>
+
+</body>
+</html>

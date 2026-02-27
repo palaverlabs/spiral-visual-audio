@@ -11,49 +11,67 @@ export function encodeToSVG(samples, opts = {}) {
     Rin = 40,
     cx = 260,
     cy = 260,
+    rightChannel = null,
   } = opts;
 
+  const isStereo = rightChannel !== null;
   const totalSamples = samples.length;
   const duration = totalSamples / originalSr;
 
-  // Compute N from target effective SR so bandwidth is consistent for any song length.
   const targetSr = QUALITY_TARGET_SR[quality - 1];
   const N = Math.min(Math.round(targetSr * duration), QUALITY_VERTEX_CAP, totalSamples);
   const decimationFactor = totalSamples / N;
   const effectiveSr = Math.round(N / duration);
 
-  // Anti-alias before decimation.
-  const filtered = decimationFactor > 1 ? antiAliasFilter(samples, decimationFactor) : samples;
+  // Pipeline: filter → decimate → soft-limit → RIAA pre-emphasis
+  const runPipeline = (ch) => {
+    const filtered = decimationFactor > 1 ? antiAliasFilter(ch, decimationFactor) : ch;
+    const dec = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      dec[i] = clamp(filtered[Math.min(Math.floor(i * decimationFactor), totalSamples - 1)], -1, 1);
+    }
+    return riaaPreEmphasis(softLimit(dec, effectiveSr), effectiveSr, ENC_RIAA_CORNER_HZ);
+  };
 
-  // Decimate first.
-  const decimated = new Float32Array(N);
-  for (let i = 0; i < N; i++) {
-    const srcIdx = Math.min(Math.floor(i * decimationFactor), totalSamples - 1);
-    decimated[i] = clamp(filtered[srcIdx], -1, 1);
+  // Compute M/S channels (or mono)
+  let midSamples, sideSamples;
+  if (isStereo) {
+    const rLen = rightChannel.length;
+    midSamples = new Float32Array(totalSamples);
+    sideSamples = new Float32Array(totalSamples);
+    for (let i = 0; i < totalSamples; i++) {
+      const r = i < rLen ? rightChannel[i] : 0;
+      midSamples[i] = (samples[i] + r) * 0.5;
+      sideSamples[i] = (samples[i] - r) * 0.5;
+    }
+  } else {
+    midSamples = samples;
+    sideSamples = null;
   }
 
-  // Soft limit before pre-emphasis: prevents one loud transient from globally crushing
-  // the post-emphasis normalization gain, which would reduce all quieter content.
-  const limited = softLimit(decimated, effectiveSr);
+  const emphMid = runPipeline(midSamples);
+  const emphSide = isStereo ? runPipeline(sideSamples) : null;
 
-  // RIAA-style pre-emphasis at effectiveSr with ENC_RIAA_CORNER_HZ (1 kHz).
-  // Shelf at 1 kHz covers the full 1–5 kHz presence/clarity region (vs 2.1 kHz which
-  // left 1–2 kHz unprotected through coordinate quantization).
-  const emphasized = riaaPreEmphasis(limited, effectiveSr, ENC_RIAA_CORNER_HZ);
-
+  // Joint normalize across both channels so M/S balance is preserved.
   let emphPeak = 0;
-  for (let i = 0; i < emphasized.length; i++) {
-    const a = Math.abs(emphasized[i]);
-    if (a > emphPeak) emphPeak = a;
+  for (let i = 0; i < N; i++) {
+    emphPeak = Math.max(emphPeak, Math.abs(emphMid[i]));
+    if (emphSide) emphPeak = Math.max(emphPeak, Math.abs(emphSide[i]));
   }
   if (emphPeak > 1.0) {
-    const scale = 1.0 / emphPeak;
-    for (let i = 0; i < emphasized.length; i++) emphasized[i] *= scale;
+    const sc = 1.0 / emphPeak;
+    for (let i = 0; i < N; i++) {
+      emphMid[i] *= sc;
+      if (emphSide) emphSide[i] *= sc;
+    }
   }
 
-  const compressed = new Float32Array(N);
+  // Mu-law compress
+  const cMid = new Float32Array(N);
+  const cSide = isStereo ? new Float32Array(N) : null;
   for (let i = 0; i < N; i++) {
-    compressed[i] = muLawCompress(emphasized[i]);
+    cMid[i] = muLawCompress(emphMid[i]);
+    if (cSide) cSide[i] = muLawCompress(emphSide[i]);
   }
 
   const drPerTurn = (Rout - Rin) / Math.max(1, turns);
@@ -61,7 +79,6 @@ export function encodeToSVG(samples, opts = {}) {
   const k = Math.min(sensitivity, kMax);
 
   // Scale all geometry to COORD_SCALE (100x) for integer SVG coordinates.
-  // Each integer step = 1/COORD_SCALE original unit → ~14.7-bit radial amplitude resolution.
   const s = COORD_SCALE;
   const cx_s = Math.round(cx * s);
   const cy_s = Math.round(cy * s);
@@ -69,9 +86,11 @@ export function encodeToSVG(samples, opts = {}) {
   const Rin_s = Rin * s;
   const k_s = k * s;
 
-  // Error diffusion coordinate quantization (carry-forward, provably stable).
-  // Feeds unresolved fractional error into the next sample, concentrating noise
-  // at high spatial frequencies where RIAA de-emphasis attenuates it.
+  // Stereo M/S encoding:
+  //   x = cx + (rBase + k·mid)·cosθ - k·side·sinθ
+  //   y = cy + (rBase + k·mid)·sinθ + k·side·cosθ
+  // This is a rotation of (rBase+k·mid, k·side) by θ — exact inverse via dot products.
+  // Mono: standard radial displacement only.
   const pts = new Array(N);
   const groovePoints = new Float32Array(N * 2);
   let xErr = 0, yErr = 0;
@@ -80,30 +99,42 @@ export function encodeToSVG(samples, opts = {}) {
     const t = i / (N - 1);
     const theta = t * turns * TAU;
     const rBase_s = archBase(t, Rout_s, Rin_s);
-    const r_s = rBase_s + k_s * clamp(compressed[i], -1, 1);
+    const cosT = Math.cos(theta);
+    const sinT = Math.sin(theta);
 
-    const xRaw = cx_s + r_s * Math.cos(theta) + xErr;
-    const yRaw = cy_s + r_s * Math.sin(theta) + yErr;
+    let xRaw, yRaw;
+    if (isStereo) {
+      const midVal = clamp(cMid[i], -1, 1);
+      const sideVal = clamp(cSide[i], -1, 1);
+      xRaw = cx_s + (rBase_s + k_s * midVal) * cosT - k_s * sideVal * sinT + xErr;
+      yRaw = cy_s + (rBase_s + k_s * midVal) * sinT + k_s * sideVal * cosT + yErr;
+    } else {
+      const r_s = rBase_s + k_s * clamp(cMid[i], -1, 1);
+      xRaw = cx_s + r_s * cosT + xErr;
+      yRaw = cy_s + r_s * sinT + yErr;
+    }
+
     const xQ = Math.round(xRaw);
     const yQ = Math.round(yRaw);
     xErr = xRaw - xQ;
     yErr = yRaw - yQ;
 
     pts[i] = `${xQ},${yQ}`;
-    groovePoints[i * 2]     = xQ / s;  // 1x space for renderer
+    groovePoints[i * 2]     = xQ / s;
     groovePoints[i * 2 + 1] = yQ / s;
   }
 
   const outerR_s = Math.round((Rout + 8) * s);
   const innerR_s = Math.max(12 * s, Math.round((Rin - 8) * s));
   const ptsPerTurn = Math.round(N / turns);
-  const sizeMB = (N * 10 / 1024 / 1024).toFixed(1);  // integer coords avg ~10 chars/pt
-  const pipeline = decimationFactor > 1
+  const sizeMB = (N * 10 / 1024 / 1024).toFixed(1);
+  const pipelineStr = decimationFactor > 1
     ? `anti-alias → ${decimationFactor.toFixed(1)}x decimate → soft-limit → RIAA@${ENC_RIAA_CORNER_HZ}Hz → mu-law → err-diffuse`
     : `soft-limit → RIAA@${ENC_RIAA_CORNER_HZ}Hz → mu-law → err-diffuse`;
 
-  const debugMsg = `Encoded ${totalSamples} samples → ${N} vertices [${pipeline}] (~${ptsPerTurn} pts/turn, ${turns} turns, k=${k.toFixed(4)}, sr=${effectiveSr}Hz, ~${sizeMB} MB)`;
+  const debugMsg = `Encoded ${totalSamples} samples → ${N} vertices [${pipelineStr}] (~${ptsPerTurn} pts/turn, ${turns} turns, k=${k.toFixed(4)}, sr=${effectiveSr}Hz, ~${sizeMB} MB)${isStereo ? ' [STEREO M/S]' : ''}`;
 
+  const stereoFlag = isStereo ? '; stereo=1' : '';
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="520" height="520" viewBox="0 0 ${520 * s} ${520 * s}" role="img" aria-label="Geometry-only spiral record">
   <defs>
     <radialGradient id="discGrad" r="60%">
@@ -114,7 +145,7 @@ export function encodeToSVG(samples, opts = {}) {
   <circle cx="${cx_s}" cy="${cy_s}" r="${outerR_s}" fill="url(#discGrad)" stroke="#233242" stroke-width="${2 * s}"/>
   <circle cx="${cx_s}" cy="${cy_s}" r="${innerR_s}" fill="#0a0d11" stroke="#22303b" stroke-width="${2 * s}"/>
   <polyline id="audioGroove" fill="none" stroke="#5ad8cf" stroke-width="${0.8 * s}" stroke-linecap="round" points="${pts.join(' ')}" />
-  <desc>Geometry-only spiral audio. sr=${effectiveSr}; Rout=${Rout}; Rin=${Rin}; turns=${turns}; k=${k.toFixed(6)}; originalLength=${N}; mulaw=1; riaa=1; riaaHz=${ENC_RIAA_CORNER_HZ}; scale=${s}.</desc>
+  <desc>Geometry-only spiral audio. sr=${effectiveSr}; Rout=${Rout}; Rin=${Rin}; turns=${turns}; k=${k.toFixed(6)}; originalLength=${N}; mulaw=1; riaa=1; riaaHz=${ENC_RIAA_CORNER_HZ}; scale=${s}${stereoFlag}.</desc>
 </svg>`;
 
   return { svg, groovePoints, debugMsg };
@@ -134,7 +165,7 @@ export function decodeFromSVG(svgString, defaults = {}) {
 
   // Parse desc first — coordScale and riaaHz are needed before any coordinate parsing.
   let sr = 22050, originalLength = 0, storedK = 0;
-  let useMulaw = false, useRiaa = false, usePreemph = false;
+  let useMulaw = false, useRiaa = false, usePreemph = false, isStereo = false;
   let coordScale = 1, decodeRiaaHz = RIAA_CORNER_HZ;
   const descEl = doc.querySelector('desc');
   if (descEl) {
@@ -148,6 +179,7 @@ export function decodeFromSVG(svgString, defaults = {}) {
     useMulaw = /mulaw=1/.test(descText);
     useRiaa = /riaa=1/.test(descText);
     usePreemph = !useRiaa && /preemph=1/.test(descText);
+    isStereo = /stereo=1/.test(descText);
     const scaleMatch = descText.match(/scale=(\d+)/);
     if (scaleMatch) coordScale = parseInt(scaleMatch[1]);
     const riaaHzMatch = descText.match(/riaaHz=(\d+)/);
@@ -212,39 +244,97 @@ export function decodeFromSVG(svgString, defaults = {}) {
     return Math.max(0.5, mad / 0.25);
   })();
 
-  const rawDecoded = new Float32Array(N);
+  // Decode raw M/S (stereo) or radial (mono).
+  const rawMid = new Float32Array(N);
+  const rawSide = isStereo ? new Float32Array(N) : null;
+
   for (let i = 0; i < N; i++) {
-    const dx = coords[i].x - cx, dy = coords[i].y - cy;
-    const r = Math.hypot(dx, dy);
+    const dx = coords[i].x - cx;
+    const dy = coords[i].y - cy;
     const t = i / (N - 1);
     const rBase = archBase(t, Rout, Rin);
-    const raw = clamp((r - rBase) / k, -1, 1);
-    rawDecoded[i] = useMulaw ? muLawExpand(raw) : raw;
+
+    if (isStereo) {
+      // Project onto radial and tangential axes using the known encoding angle θ.
+      // Radial  = dx·cosθ + dy·sinθ = rBase + k·mid   (exact inverse)
+      // Tangential = -dx·sinθ + dy·cosθ = k·side       (exact inverse)
+      const theta = t * turns * TAU;
+      const cosT = Math.cos(theta);
+      const sinT = Math.sin(theta);
+      const radial = dx * cosT + dy * sinT;
+      const tangential = -dx * sinT + dy * cosT;
+      const midRaw = clamp((radial - rBase) / k, -1, 1);
+      const sideRaw = clamp(tangential / k, -1, 1);
+      rawMid[i] = useMulaw ? muLawExpand(midRaw) : midRaw;
+      rawSide[i] = useMulaw ? muLawExpand(sideRaw) : sideRaw;
+    } else {
+      const r = Math.hypot(dx, dy);
+      const raw = clamp((r - rBase) / k, -1, 1);
+      rawMid[i] = useMulaw ? muLawExpand(raw) : raw;
+    }
   }
 
   // De-emphasis: exact inverse of encoding pre-emphasis.
-  // riaa=1 with riaaHz=N → high-shelf at stored corner frequency
-  // preemph=1 only       → legacy 0.97 first-order IIR (backward compat for old SVGs)
-  let decoded = rawDecoded;
-  if (useRiaa) {
-    decoded = riaaDeEmphasis(rawDecoded, sr, decodeRiaaHz);
-  } else if (usePreemph) {
-    decoded = deEmphasis(rawDecoded);
-  }
+  const deEmph = (ch) => {
+    if (useRiaa) return riaaDeEmphasis(ch, sr, decodeRiaaHz);
+    if (usePreemph) return deEmphasis(ch);
+    return ch;
+  };
 
-  // Note: the 3-tap [0.25, 0.5, 0.25] smoother that was here is intentionally removed.
-  // It was cutting ~2 kHz of content at 11 kHz effective SR. The Blackman-sinc
-  // anti-imaging filter below already handles staircase artifacts from upsampling.
+  let outMid = deEmph(rawMid);
+  let outSide = isStereo ? deEmph(rawSide) : null;
 
-  let out = decoded;
+  // Lanczos-3 upsample + anti-imaging.
   if (originalLength > 0 && originalLength !== N) {
-    // Lanczos-3 resampler: sharper rolloff (-30 dB stopband) and flatter passband
-    // (±0.2 dB) vs the previous Catmull-Rom cubic (±1.5 dB, -13 dB stopband).
-    out = lanczos3Resample(decoded, originalLength);
-    // Anti-imaging: remove spectral images created by the upsampling process.
     const upsampleRatio = originalLength / N;
-    if (upsampleRatio > 1) out = antiAliasFilter(out, upsampleRatio);
+    outMid = lanczos3Resample(outMid, originalLength);
+    if (upsampleRatio > 1) outMid = antiAliasFilter(outMid, upsampleRatio);
+    if (outSide) {
+      outSide = lanczos3Resample(outSide, originalLength);
+      if (upsampleRatio > 1) outSide = antiAliasFilter(outSide, upsampleRatio);
+    }
   }
+
+  if (isStereo) {
+    // DC remove on mid (side should be near zero DC).
+    let dcSum = 0;
+    for (let i = 0; i < outMid.length; i++) dcSum += outMid[i];
+    const dcOffset = dcSum / outMid.length;
+    if (Math.abs(dcOffset) > 0.001) {
+      for (let i = 0; i < outMid.length; i++) outMid[i] -= dcOffset;
+    }
+
+    // M/S → L/R
+    const samplesL = new Float32Array(outMid.length);
+    const samplesR = new Float32Array(outMid.length);
+    for (let i = 0; i < outMid.length; i++) {
+      samplesL[i] = outMid[i] + outSide[i];
+      samplesR[i] = outMid[i] - outSide[i];
+    }
+
+    // Joint normalize (L+S or L-S can sum to > 1.0).
+    let peak = 0;
+    for (let i = 0; i < samplesL.length; i++) {
+      peak = Math.max(peak, Math.abs(samplesL[i]), Math.abs(samplesR[i]));
+    }
+    if (peak > 0.001 && peak < 0.99) {
+      const g = 1.0 / peak;
+      for (let i = 0; i < samplesL.length; i++) { samplesL[i] *= g; samplesR[i] *= g; }
+    }
+
+    const fadeLen = Math.min(256, Math.floor(samplesL.length * FADE_LEN_FRACTION));
+    const fadeDiv = Math.max(1, fadeLen - 1);
+    for (let i = 0; i < fadeLen; i++) {
+      const g = i / fadeDiv;
+      samplesL[i] *= g; samplesL[samplesL.length - 1 - i] *= g;
+      samplesR[i] *= g; samplesR[samplesR.length - 1 - i] *= g;
+    }
+
+    return { samples: samplesL, samplesL, samplesR, sampleRate: sr, turns, vertices: N, Rout, Rin, cx, cy, k, groovePoints };
+  }
+
+  // Mono path (unchanged).
+  let out = outMid;
 
   let dcSum = 0;
   for (let i = 0; i < out.length; i++) dcSum += out[i];
@@ -264,8 +354,9 @@ export function decodeFromSVG(svgString, defaults = {}) {
   }
 
   const fadeLen = Math.min(256, Math.floor(out.length * FADE_LEN_FRACTION));
+  const fadeDiv = Math.max(1, fadeLen - 1);
   for (let i = 0; i < fadeLen; i++) {
-    const g = i / fadeLen;
+    const g = i / fadeDiv;
     out[i] *= g;
     out[out.length - 1 - i] *= g;
   }
