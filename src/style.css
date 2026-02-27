@@ -55,7 +55,7 @@ body {
 }
 
 .logo {
-  height: 26px;
+  height: 52px;
   width: auto;
   mix-blend-mode: screen;
   filter: drop-shadow(0 0 8px var(--accent-glow));
@@ -177,6 +177,36 @@ body {
   gap: 8px;
 }
 
+/* ── Play button + spinning ring ── */
+.play-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+}
+
+.play-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s;
+  filter: drop-shadow(0 0 4px var(--accent));
+}
+
+.play-wrap.playing .play-ring {
+  opacity: 0.9;
+  animation: ring-spin 1.4s linear infinite;
+}
+
+@keyframes ring-spin {
+  to { transform: rotate(360deg); }
+}
+
 .play-btn {
   width: 42px;
   height: 42px;
@@ -186,11 +216,12 @@ body {
   color: #000;
   font-size: 15px;
   cursor: pointer;
-  flex-shrink: 0;
+  width: 100%;
+  height: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.1s, box-shadow 0.1s;
+  transition: transform 0.1s, box-shadow 0.15s;
   box-shadow: 0 0 16px var(--accent-glow);
 }
 
@@ -200,7 +231,7 @@ body {
 }
 
 .play-btn:active:not(:disabled) {
-  transform: scale(0.96);
+  transform: scale(0.94);
 }
 
 .play-btn:disabled {
@@ -208,6 +239,12 @@ body {
   color: #666;
   box-shadow: none;
   cursor: not-allowed;
+}
+
+/* Pressed-in look while motor is running */
+.play-wrap.playing .play-btn {
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.45), 0 0 20px var(--accent-glow);
+  transform: scale(0.95);
 }
 
 .time-display {
@@ -331,6 +368,8 @@ body {
 .text-btn:hover {
   color: var(--text-secondary);
 }
+
+input[type="file"] { display: none; }
 
 /* ── Status line ── */
 .status-line {

@@ -25,6 +25,8 @@ class App {
     this.scrubProgress = 0;
     this.discRotation = 0;
     this.isDragging = false;
+    this._spinRate = 0;      // 0–1 multiplier applied to SPIN_SPEED
+    this._spindownId = null; // RAF handle for spindown animation
     this.dragLastAngle = 0;
     this.dragLastTime = 0;
     this.scratchVel = 0;    // smoothed angular velocity during drag (rad/s)
@@ -40,7 +42,9 @@ class App {
           const now = performance.now();
           const dt = (now - this._lastFrameTime) / 1000;
           this._lastFrameTime = now;
-          this.discRotation += dt * SPIN_SPEED;
+          // Ramp spin rate up toward 1 (spinup ~670ms)
+          this._spinRate = Math.min(1, this._spinRate + 1.5 * dt);
+          this.discRotation += dt * SPIN_SPEED * this._spinRate;
         }
         this.scrubProgress = progress;
         this.renderer.drawDiscWithGroove(this.discRotation, this.scrubProgress, this._geom(), amplitude);
@@ -50,7 +54,8 @@ class App {
         document.getElementById('playBtn').style.display = 'inline-block';
         document.getElementById('pauseBtn').style.display = 'none';
         document.getElementById('currentTime').textContent = this._formatTime(this.scrubProgress * this.duration);
-        if (this.groovePoints) this.renderer.drawDiscWithGroove(this.discRotation, this.scrubProgress, this._geom());
+        document.getElementById('playWrap')?.classList.remove('playing');
+        this._startSpindown();
         this.debug('Playback stopped');
       },
       onDebug: (msg) => this.debug(msg),
@@ -60,7 +65,7 @@ class App {
 
     // Apply skin AFTER renderer created, BEFORE first draw
     const restored = this.skinManager.restore();
-    const skin = restored || SKINS.vagc77;
+    const skin = restored || SKINS.owl;
     if (!restored) this.skinManager.apply(skin);
     this.renderer.setSkin(skin.canvas);
     this._updateSkinButtons(skin);
@@ -311,6 +316,9 @@ class App {
     document.getElementById('playBtn').style.display = 'none';
     document.getElementById('pauseBtn').style.display = 'inline-block';
     document.getElementById('pauseBtn').disabled = false;
+    document.getElementById('playWrap')?.classList.add('playing');
+    cancelAnimationFrame(this._spindownId);
+    this._spinRate = 0; // always spin up from rest
 
     this._lastFrameTime = performance.now();
     await this.playback.start(audio, speed, this.scrubProgress);
@@ -445,6 +453,23 @@ class App {
     if (!this.grooveSVG) return null;
     const result = decodeFromSVG(this.grooveSVG, this._geom());
     return { left: result.samples, right: result.samplesR || null, sampleRate: result.sampleRate };
+  }
+
+  _startSpindown() {
+    cancelAnimationFrame(this._spindownId);
+    this._lastFrameTime = performance.now();
+    const step = () => {
+      const now = performance.now();
+      const dt = Math.min((now - this._lastFrameTime) / 1000, 0.05);
+      this._lastFrameTime = now;
+      this._spinRate = Math.max(0, this._spinRate - 0.7 * dt);
+      this.discRotation += dt * SPIN_SPEED * this._spinRate;
+      if (this.groovePoints)
+        this.renderer.drawDiscWithGroove(this.discRotation, this.scrubProgress, this._geom());
+      if (this._spinRate > 0)
+        this._spindownId = requestAnimationFrame(step);
+    };
+    this._spindownId = requestAnimationFrame(step);
   }
 
   _enablePlayback() {

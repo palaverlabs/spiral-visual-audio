@@ -36,8 +36,11 @@
   <section class="app-controls">
 
     <div class="transport">
-      <button class="play-btn" id="playBtn" disabled>&#9654;</button>
-      <button class="play-btn" id="pauseBtn" disabled style="display:none">&#9646;&#9646;</button>
+      <div class="play-wrap" id="playWrap">
+        <div class="play-ring"></div>
+        <button class="play-btn" id="playBtn" disabled>&#9654;</button>
+        <button class="play-btn" id="pauseBtn" disabled style="display:none">&#9646;&#9646;</button>
+      </div>
       <span class="time-display">
         <span id="currentTime">0:00</span>
         <span class="t-sep"> / </span>
@@ -62,7 +65,7 @@
 </div>
 
 <!-- Hidden functional elements required by JS -->
-<input type="file" id="svgFile" accept=".svg,image/svg+xml">
+<input type="file" id="svgFile" accept=".svg,image/svg+xml" style="display:none">
 <div id="svgUploadArea" style="display:none"></div>
 <input type="range" id="qualitySlider"     min="1"  max="5"  value="5"  step="1"    style="display:none"><span id="qualityValue"     style="display:none">5</span>
 <input type="range" id="turnsSlider"       min="3"  max="80" value="80" step="1"    style="display:none"><span id="turnsValue"       style="display:none">80</span>
