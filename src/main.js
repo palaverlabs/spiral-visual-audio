@@ -67,8 +67,7 @@ class App {
         document.getElementById('currentTime').textContent = this._formatTime(audioTimePosition);
       },
       onStop: () => {
-        document.getElementById('playBtn').style.display = 'inline-block';
-        document.getElementById('pauseBtn').style.display = 'none';
+        document.getElementById('playBtn').textContent = '▶';
         document.getElementById('currentTime').textContent = this._formatTime(this.scrubProgress * this.duration);
         document.getElementById('playWrap')?.classList.remove('playing');
         this._startSpindown();
@@ -125,13 +124,15 @@ class App {
 
     document.getElementById('loadSvgBtn')?.addEventListener('click', () => document.getElementById('svgFile').click());
     document.getElementById('generateGroove').addEventListener('click', () => this.generateGroove());
-    document.getElementById('playBtn').addEventListener('click', () => this.startPlayback());
-    document.getElementById('pauseBtn').addEventListener('click', () => {
-      // Trigger vinyl-style spindown: audio + disc decelerate together.
-      this._isStopping = true;
-      document.getElementById('playBtn').style.display = 'inline-block';
-      document.getElementById('pauseBtn').style.display = 'none';
-      document.getElementById('playWrap')?.classList.remove('playing');
+    document.getElementById('playBtn').addEventListener('click', () => {
+      if (this.playback.isPlaying || this._isStopping) {
+        // Vinyl-style spindown.
+        this._isStopping = true;
+        document.getElementById('playBtn').textContent = '▶';
+        document.getElementById('playWrap')?.classList.remove('playing');
+      } else {
+        this.startPlayback();
+      }
     });
     document.getElementById('downloadSVG').addEventListener('click', () => this.downloadSVG());
     document.getElementById('downloadAudio').addEventListener('click', () => this.downloadAudio());
@@ -341,9 +342,7 @@ class App {
     const chInfo = audio.right ? 'stereo' : 'mono';
     this.debug(`Starting groove playback... Speed: ${speed}x | ${audio.left.length} samples @ ${audio.sampleRate}Hz [${chInfo}]`);
 
-    document.getElementById('playBtn').style.display = 'none';
-    document.getElementById('pauseBtn').style.display = 'inline-block';
-    document.getElementById('pauseBtn').disabled = false;
+    document.getElementById('playBtn').textContent = '⏸';
     document.getElementById('playWrap')?.classList.add('playing');
     cancelAnimationFrame(this._spindownId);
     this._isStopping = false;
