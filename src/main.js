@@ -86,9 +86,9 @@ class App {
       e.preventDefault();
       uploadArea.classList.remove('dragover');
       const file = e.dataTransfer.files[0];
-      if (file?.type.startsWith('audio/')) this.loadAudioFile(file);
+      if (file && (file.type.startsWith('audio/') || file.type.startsWith('video/'))) this.loadAudioFile(file);
       else if (file && (file.type === 'image/svg+xml' || file.name.endsWith('.svg'))) this.loadGrooveFile(file);
-      else this._statusError('Please drop an audio file or SVG groove file');
+      else this._statusError('Please drop an audio or video file, or an SVG groove file');
     });
     audioFile.addEventListener('change', (e) => { if (e.target.files[0]) this.loadAudioFile(e.target.files[0]); });
 
@@ -278,6 +278,9 @@ class App {
 
         this.grooveSVG = svg;
         this.groovePoints = groovePoints;
+        // Cache original audio so playback doesn't have to re-decode the SVG.
+        this.decodedAudio = this.originalAudio;
+        this.decodedAudioR = this.originalAudioR;
         this.scrubProgress = 0;
         this.discRotation = 0;
         this.debug(debugMsg);
