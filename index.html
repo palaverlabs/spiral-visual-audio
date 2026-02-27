@@ -3,106 +3,134 @@
 <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-  <title>Visual Audio Groove Codec</title>
+  <title>Spiral Audio · Groove Codec</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 </head>
 <body>
 <div class="container">
-  <div class="header">
-    <h1>Visual Audio Groove Codec</h1>
-    <div class="subtitle">Transform audio into visual grooves &bull; Load &amp; play existing grooves</div>
-  </div>
+  <div class="device">
 
-  <div class="main-content">
-    <div class="controls-panel">
-      <div class="controls-section">
-        <h3>Audio Input</h3>
-        <div class="upload-area" id="uploadArea">
-          <div style="font-size: 2em; margin-bottom: 10px;">&#127925;</div>
-          <div style="font-weight: 600; margin-bottom: 5px;">Drop audio file here</div>
-          <div style="color: #888; font-size: 14px;">or click to browse</div>
-          <input type="file" id="audioFile" accept="audio/*">
-        </div>
+    <!-- LEFT: controls -->
+    <div class="device-left">
+      <div class="device-brand">
+        <img src="/spiral-audio-logo text.png" alt="Spiral Audio" class="brand-logo">
+      </div>
 
-        <div class="upload-area" id="svgUploadArea" style="margin-top: 15px; border-color: #da70d6; background: rgba(218, 112, 214, 0.05);">
-          <div style="font-size: 2em; margin-bottom: 10px;">&#127744;</div>
-          <div style="font-weight: 600; margin-bottom: 5px; color: #da70d6;">Drop visual groove SVG here</div>
-          <div style="color: #888; font-size: 14px;">or click to load existing groove</div>
-          <input type="file" id="svgFile" accept=".svg,image/svg+xml">
-        </div>
-
-        <div class="status info" id="audioStatus">No audio loaded</div>
-
-        <div class="audio-info" id="audioInfo" style="display: none;">
-          <div class="info-item">
-            <div class="info-label">Duration</div>
-            <div class="info-value" id="infoDuration">--</div>
+      <div class="device-lcd">
+        <div class="lcd-screen">
+          <div class="lcd-time">
+            <span id="currentTime">00:00</span>
+            <span class="lcd-sep"> / </span>
+            <span id="totalTime">00:00</span>
           </div>
-          <div class="info-item">
-            <div class="info-label">Sample Rate</div>
-            <div class="info-value" id="infoSampleRate">--</div>
-          </div>
-          <div class="info-item">
-            <div class="info-label">Channels</div>
-            <div class="info-value" id="infoChannels">--</div>
-          </div>
-          <div class="info-item">
-            <div class="info-label">File Size</div>
-            <div class="info-value" id="infoSize">--</div>
-          </div>
+          <div class="lcd-status info" id="audioStatus">READY</div>
         </div>
       </div>
 
-      <div class="controls-section">
-        <h3>Groove Settings</h3>
-        <div class="control-group">
-          <label>Quality:</label>
-          <input type="range" id="qualitySlider" min="1" max="5" value="5" step="1">
-          <span class="value" id="qualityValue">5</span>
+      <div class="device-transport">
+        <div class="transport-primary">
+          <button class="hw-btn hw-btn--play" id="playBtn" disabled>&#9654;</button>
+          <button class="hw-btn hw-btn--play" id="pauseBtn" disabled style="display:none;">&#9646;&#9646;</button>
         </div>
-        <div class="control-group">
-          <label>Spiral Turns:</label>
-          <input type="range" id="turnsSlider" min="3" max="80" value="80" step="1">
-          <span class="value" id="turnsValue">80</span>
-        </div>
-        <div class="control-group">
-          <label>Groove Sensitivity:</label>
-          <input type="range" id="sensitivitySlider" min="1" max="10" value="10" step="1">
-          <span class="value" id="sensitivityValue">10</span>
+        <div class="transport-secondary">
+          <button class="hw-btn hw-btn--sm" id="generateGroove" disabled>ENCODE</button>
+          <button class="hw-btn hw-btn--sm" id="downloadSVG" disabled>SVG</button>
+          <button class="hw-btn hw-btn--sm" id="downloadAudio" disabled>WAV</button>
         </div>
       </div>
 
-      <div class="controls-section">
-        <h3>Actions</h3>
-        <button class="btn" id="generateGroove" disabled>Generate Visual Groove</button>
-        <button class="btn" id="downloadSVG" disabled>Download SVG</button>
-        <button class="btn" id="downloadAudio" disabled>Export Audio</button>
-
-        <div class="playback-controls">
-          <button class="btn" id="playBtn" disabled>Play Groove</button>
-          <button class="btn" id="pauseBtn" disabled style="display: none;">Pause</button>
-        </div>
-
-        <div class="control-group">
-          <label>Playback Speed:</label>
-          <input type="range" id="speedSlider" min="0.25" max="2" value="1" step="0.25">
-          <span class="value" id="speedValue">1x</span>
-        </div>
+      <div class="device-row">
+        <span class="hw-label">SPEED</span>
+        <input type="range" id="speedSlider" min="0.25" max="2" value="1" step="0.25" class="hw-slider">
+        <span class="hw-value" id="speedValue">1x</span>
       </div>
 
-      <div class="time-display">
-        <span id="currentTime">00:00</span> / <span id="totalTime">00:00</span>
+      <div class="device-tabs">
+        <button class="tab-btn active" data-tab="load">LOAD</button>
+        <button class="tab-btn" data-tab="tune">TUNE</button>
+        <button class="tab-btn" data-tab="info">INFO</button>
+        <button class="tab-btn" data-tab="skin">SKIN</button>
+      </div>
+
+      <div class="tab-panels">
+
+        <!-- LOAD tab -->
+        <div class="tab-panel active" id="tab-load">
+          <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">&#127925;</div>
+            <div class="upload-title">DROP AUDIO</div>
+            <div class="upload-sub">or click to browse</div>
+            <input type="file" id="audioFile" accept="audio/*">
+          </div>
+          <div class="upload-area upload-area--svg" id="svgUploadArea">
+            <div class="upload-icon">&#127744;</div>
+            <div class="upload-title upload-svg-label">DROP GROOVE SVG</div>
+            <div class="upload-sub">or click to load</div>
+            <input type="file" id="svgFile" accept=".svg,image/svg+xml">
+          </div>
+        </div>
+
+        <!-- TUNE tab -->
+        <div class="tab-panel" id="tab-tune">
+          <div class="device-row">
+            <span class="hw-label">QUALITY</span>
+            <input type="range" id="qualitySlider" min="1" max="5" value="5" step="1" class="hw-slider">
+            <span class="hw-value" id="qualityValue">5</span>
+          </div>
+          <div class="device-row">
+            <span class="hw-label">TURNS</span>
+            <input type="range" id="turnsSlider" min="3" max="80" value="80" step="1" class="hw-slider">
+            <span class="hw-value" id="turnsValue">80</span>
+          </div>
+          <div class="device-row">
+            <span class="hw-label">SENS</span>
+            <input type="range" id="sensitivitySlider" min="1" max="10" value="10" step="1" class="hw-slider">
+            <span class="hw-value" id="sensitivityValue">10</span>
+          </div>
+        </div>
+
+        <!-- INFO tab -->
+        <div class="tab-panel" id="tab-info">
+          <div class="audio-info" id="audioInfo">
+            <div class="info-item"><div class="info-label">DURATION</div><div class="info-value" id="infoDuration">--</div></div>
+            <div class="info-item"><div class="info-label">RATE</div><div class="info-value" id="infoSampleRate">--</div></div>
+            <div class="info-item"><div class="info-label">CH</div><div class="info-value" id="infoChannels">--</div></div>
+            <div class="info-item"><div class="info-label">SIZE</div><div class="info-value" id="infoSize">--</div></div>
+          </div>
+        </div>
+
+        <!-- SKIN tab -->
+        <div class="tab-panel" id="tab-skin">
+          <div class="skin-presets">
+            <button class="hw-btn hw-btn--sm" id="skinClassic">CLASSIC</button>
+            <button class="hw-btn hw-btn--sm" id="skinVagc77">VAGC-77</button>
+            <button class="hw-btn hw-btn--sm" id="skinOmitron">OMITRON</button>
+            <button class="hw-btn hw-btn--sm" id="skinOwl">OWL</button>
+            <button class="hw-btn hw-btn--sm" id="skinEq">EQ</button>
+          </div>
+          <div class="skin-file-row">
+            <button class="hw-btn hw-btn--sm" id="skinLoad">LOAD</button>
+            <button class="hw-btn hw-btn--sm" id="skinExport">EXPORT</button>
+            <input type="file" id="skinFileInput" accept=".json,.skin.json">
+          </div>
+        </div>
+
+      </div><!-- .tab-panels -->
+    </div><!-- .device-left -->
+
+    <!-- RIGHT: disc -->
+    <div class="device-right">
+      <div class="disc-bezel">
+        <canvas id="grooveCanvas" width="1000" height="1000"></canvas>
       </div>
     </div>
 
-    <div class="groove-display" id="grooveDisplay">
-      <canvas id="grooveCanvas" width="1000" height="1000"></canvas>
-    </div>
-  </div>
+  </div><!-- .device -->
 
   <div class="debug" id="debugLog">
     Visual Audio Groove Codec ready<br>
-    &rarr; Upload audio to create new visual groove<br>
-    &rarr; Or load existing .svg groove file for playback
+    &rarr; Upload audio or drop an SVG groove to begin
   </div>
 </div>
 
