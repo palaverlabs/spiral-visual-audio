@@ -296,9 +296,24 @@ body {
   animation: pulse 1.2s ease-in-out infinite;
 }
 
+.action-btn.pulse {
+  animation: encode-pulse 1.8s ease-in-out infinite;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 0.5; }
   50%       { opacity: 1; }
+}
+
+@keyframes encode-pulse {
+  0%, 100% {
+    border-color: rgba(78,205,196,0.28);
+    box-shadow: none;
+  }
+  50% {
+    border-color: var(--accent);
+    box-shadow: 0 0 12px var(--accent-glow);
+  }
 }
 
 /* ── Speed row ── */

@@ -58,7 +58,8 @@ class App {
             // Spinup: ramp audio + disc rate from 0 to full speed.
             this._spinRate = Math.min(1, this._spinRate + 1.5 * dt);
             this.discRotation += dt * SPIN_SPEED * this._spinRate;
-            if (this._spinRate < 1) this.playback.setRate(speed * this._spinRate);
+            // Always call setRate so AudioContext init delay can't skip it.
+            this.playback.setRate(speed * this._spinRate);
           }
         }
         this.scrubProgress = progress;
@@ -212,7 +213,9 @@ class App {
         channels: chLabel,
         size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
       });
-      document.getElementById('generateGroove').disabled = false;
+      const encodeBtn = document.getElementById('generateGroove');
+      encodeBtn.disabled = false;
+      encodeBtn.classList.add('pulse');
       document.getElementById('dropOverlay')?.classList.add('hidden');
       this.debug(`Audio loaded: ${this.originalAudio.length} samples, ${this.sampleRate}Hz, ${this.duration.toFixed(2)}s${this.originalAudioR ? ' [stereo]' : ''}`);
     } catch (error) {
@@ -323,6 +326,7 @@ class App {
       }
 
       btn.classList.remove('loading');
+      btn.classList.remove('pulse');
       btn.textContent = 'ENCODE';
       btn.disabled = false;
     }, 100);
@@ -345,9 +349,10 @@ class App {
     this._isStopping = false;
     this._spinRate = 0; // always spin up from rest
 
-    this._lastFrameTime = performance.now();
     // Start frozen (rate=0); onFrame ramps up via _spinRate.
     await this.playback.start(audio, 0, this.scrubProgress);
+    // Reset frame timer AFTER async init so first dt isn't inflated.
+    this._lastFrameTime = performance.now();
   }
 
   downloadSVG() {

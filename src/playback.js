@@ -83,6 +83,7 @@ export class PlaybackManager {
       this.isPlaying = false;
       this.onDebug(`Playback error: ${err.message}`);
       console.error(err);
+      this.onStop();
     }
   }
 
