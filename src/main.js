@@ -27,6 +27,7 @@ class App {
     this.isDragging = false;
     this._spinRate = 0;      // 0–1 multiplier applied to SPIN_SPEED
     this._spindownId = null; // RAF handle for spindown animation
+    this._isStopping = false; // true while vinyl spindown is in progress
     this.dragLastAngle = 0;
     this.dragLastTime = 0;
     this.scratchVel = 0;    // smoothed angular velocity during drag (rad/s)
@@ -37,14 +38,28 @@ class App {
 
     this.playback = new PlaybackManager({
       onFrame: ({ progress, audioTimePosition, amplitude = 0 }) => {
-        // Advance disc rotation at SPIN_SPEED unless user is dragging.
         if (!this.isDragging) {
           const now = performance.now();
           const dt = (now - this._lastFrameTime) / 1000;
           this._lastFrameTime = now;
-          // Ramp spin rate up toward 1 (spinup ~670ms)
-          this._spinRate = Math.min(1, this._spinRate + 1.5 * dt);
-          this.discRotation += dt * SPIN_SPEED * this._spinRate;
+          const speed = parseFloat(document.getElementById('speedSlider').value);
+
+          if (this._isStopping) {
+            // Vinyl spindown: ramp audio + disc rate to 0, then stop.
+            this._spinRate = Math.max(0, this._spinRate - 0.7 * dt);
+            this.playback.setRate(speed * this._spinRate);
+            this.discRotation += dt * SPIN_SPEED * this._spinRate;
+            if (this._spinRate === 0) {
+              this._isStopping = false;
+              this.playback.stop();
+              return;
+            }
+          } else {
+            // Spinup: ramp audio + disc rate from 0 to full speed.
+            this._spinRate = Math.min(1, this._spinRate + 1.5 * dt);
+            this.discRotation += dt * SPIN_SPEED * this._spinRate;
+            if (this._spinRate < 1) this.playback.setRate(speed * this._spinRate);
+          }
         }
         this.scrubProgress = progress;
         this.renderer.drawDiscWithGroove(this.discRotation, this.scrubProgress, this._geom(), amplitude);
@@ -110,7 +125,13 @@ class App {
     document.getElementById('loadSvgBtn')?.addEventListener('click', () => document.getElementById('svgFile').click());
     document.getElementById('generateGroove').addEventListener('click', () => this.generateGroove());
     document.getElementById('playBtn').addEventListener('click', () => this.startPlayback());
-    document.getElementById('pauseBtn').addEventListener('click', () => this.playback.stop());
+    document.getElementById('pauseBtn').addEventListener('click', () => {
+      // Trigger vinyl-style spindown: audio + disc decelerate together.
+      this._isStopping = true;
+      document.getElementById('playBtn').style.display = 'inline-block';
+      document.getElementById('pauseBtn').style.display = 'none';
+      document.getElementById('playWrap')?.classList.remove('playing');
+    });
     document.getElementById('downloadSVG').addEventListener('click', () => this.downloadSVG());
     document.getElementById('downloadAudio').addEventListener('click', () => this.downloadAudio());
 
@@ -321,10 +342,12 @@ class App {
     document.getElementById('pauseBtn').disabled = false;
     document.getElementById('playWrap')?.classList.add('playing');
     cancelAnimationFrame(this._spindownId);
+    this._isStopping = false;
     this._spinRate = 0; // always spin up from rest
 
     this._lastFrameTime = performance.now();
-    await this.playback.start(audio, speed, this.scrubProgress);
+    // Start frozen (rate=0); onFrame ramps up via _spinRate.
+    await this.playback.start(audio, 0, this.scrubProgress);
   }
 
   downloadSVG() {
