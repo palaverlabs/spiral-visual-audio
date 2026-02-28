@@ -131,6 +131,9 @@ class App {
         document.getElementById('playBtn').textContent = '▶';
         document.getElementById('playWrap')?.classList.remove('playing');
       } else {
+        // unlock() must be called synchronously within the gesture handler —
+        // iOS Safari drops the gesture context after the first await.
+        this.playback.unlock();
         this.startPlayback();
       }
     });

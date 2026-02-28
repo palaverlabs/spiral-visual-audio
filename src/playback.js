@@ -8,12 +8,25 @@ export class PlaybackManager {
     this.onDebug = onDebug;
     this.isPlaying = false;
     this.animationId = null;
-    this._ctx = null;
+    this._ctx = null;          // persistent — never closed after creation
+    this._workletLoaded = false;
     this._node = null;
     this._latestProgress = 0;
-    this._amplitude = 0;  // envelope-followed amplitude for stylus pulse
+    this._amplitude = 0;
     this._totalDuration = 0;
-    this._baseAdv = 1; // advance per output sample at 1x speed
+    this._baseAdv = 1;
+  }
+
+  // Call this synchronously inside a user-gesture handler (before any await).
+  // iOS Safari loses gesture context after the first await, so resume() must
+  // happen here, not inside the async start() chain.
+  unlock() {
+    if (!this._ctx) {
+      this._ctx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (this._ctx.state === 'suspended') {
+      this._ctx.resume(); // intentionally not awaited
+    }
   }
 
   // audio: { left, right?, sampleRate } — right is null for mono.
@@ -33,12 +46,21 @@ export class PlaybackManager {
     }
 
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      // Ensure context exists (fallback if unlock() wasn't called).
+      if (!this._ctx) {
+        this._ctx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const ctx = this._ctx;
+
+      // Load worklet only once per context lifetime.
+      if (!this._workletLoaded) {
+        await ctx.audioWorklet.addModule('/groove-processor.js');
+        this._workletLoaded = true;
+      }
+
+      // Ensure context is running (belt-and-suspenders for non-iOS).
       if (ctx.state === 'suspended') await ctx.resume();
 
-      await ctx.audioWorklet.addModule('/groove-processor.js');
-
-      this._ctx = ctx;
       this._totalDuration = left.length / rate;
       this._baseAdv = rate / ctx.sampleRate;
       this._latestProgress = startProgress;
@@ -52,19 +74,17 @@ export class PlaybackManager {
       this._node.port.onmessage = ({ data }) => {
         if (data.type === 'pos') {
           this._latestProgress = data.v;
-          // Envelope follower: fast attack (~12ms), slow release (~200ms).
           const raw = data.amp || 0;
           if (raw > this._amplitude) {
-            this._amplitude = 0.6 * raw + 0.4 * this._amplitude; // attack
+            this._amplitude = 0.6 * raw + 0.4 * this._amplitude;
           } else {
-            this._amplitude = 0.04 * raw + 0.96 * this._amplitude; // release
+            this._amplitude = 0.04 * raw + 0.96 * this._amplitude;
           }
         } else if (data.type === 'ended') {
           this.stop();
         }
       };
 
-      // Transfer copies so the caller's arrays stay intact.
       const leftCopy = left.buffer.slice(0);
       const rightCopy = right ? right.buffer.slice(0) : null;
       const transferList = rightCopy ? [leftCopy, rightCopy] : [leftCopy];
@@ -78,7 +98,7 @@ export class PlaybackManager {
       }, transferList);
 
       this._animate();
-      this.onDebug(`Scratch playback ready: ${speed}x, ${this._totalDuration.toFixed(2)}s, adv=${this._baseAdv.toFixed(4)}${isStereo ? ' [stereo]' : ''}`);
+      this.onDebug(`Playback ready: ${speed}x, ${this._totalDuration.toFixed(2)}s${isStereo ? ' [stereo]' : ''}`);
     } catch (err) {
       this.isPlaying = false;
       this.onDebug(`Playback error: ${err.message}`);
@@ -104,10 +124,7 @@ export class PlaybackManager {
       this._node.disconnect();
       this._node = null;
     }
-    if (this._ctx) {
-      this._ctx.close().catch(() => {});
-      this._ctx = null;
-    }
+    // Keep this._ctx alive — iOS requires reuse of the same context.
 
     this.onStop();
   }
@@ -139,7 +156,7 @@ export class PlaybackManager {
     write(8, 'WAVE');
     write(12, 'fmt ');
     view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);           // PCM
+    view.setUint16(20, 1, true);
     view.setUint16(22, channels, true);
     view.setUint32(24, rate, true);
     view.setUint32(28, rate * channels * 2, true);
@@ -180,7 +197,7 @@ export class PlaybackManager {
   }
 
   _animate() {
-    const frame = (now) => {
+    const frame = () => {
       if (!this.isPlaying) return;
       this.onFrame({
         progress: this._latestProgress,
