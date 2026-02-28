@@ -546,10 +546,13 @@ class App {
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
+    a.rel = 'noopener';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // Delay revoke — iOS downloads are async and an immediate revoke
+    // produces an empty/corrupt file.
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
 }
 
