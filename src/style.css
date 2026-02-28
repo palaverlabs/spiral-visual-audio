@@ -387,16 +387,7 @@ body {
   color: var(--text-secondary);
 }
 
-/* Visually hidden but not display:none — iOS 17+ blocks .click() on display:none file inputs */
-input[type="file"] {
-  position: fixed;
-  top: -200%;
-  left: -200%;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
+input[type="file"] { display: none; }
 
 /* ── Status line ── */
 .status-line {
