@@ -389,6 +389,18 @@ body {
 
 input[type="file"] { display: none; }
 
+/* #audioFile must NOT use display:none — iOS 17+ won't open the picker
+   when .click() is called on a hidden input. Off-screen positioning works. */
+#audioFile {
+  display: block;
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* ── Status line ── */
 .status-line {
   font-size: 11px;
