@@ -541,7 +541,20 @@ class App {
     return `${mins}:${secs}`;
   }
 
-  _triggerDownload(blob, filename) {
+  async _triggerDownload(blob, filename) {
+    // On iOS, use the native share sheet — blob URL downloads are unreliable.
+    if (navigator.canShare) {
+      const file = new File([blob], filename, { type: blob.type });
+      if (navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: filename });
+          return;
+        } catch (err) {
+          if (err.name === 'AbortError') return; // user cancelled
+        }
+      }
+    }
+    // Desktop fallback: blob URL download.
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -550,8 +563,6 @@ class App {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    // Delay revoke — iOS downloads are async and an immediate revoke
-    // produces an empty/corrupt file.
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
 }
