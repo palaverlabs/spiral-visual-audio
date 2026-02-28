@@ -201,8 +201,9 @@ class App {
     try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       // Wrap in explicit Promise — older Safari decodeAudioData is callback-only.
+      const arrayBuffer = await file.arrayBuffer();
       const audioBuffer = await new Promise((resolve, reject) =>
-        audioContext.decodeAudioData(await file.arrayBuffer(), resolve, reject)
+        audioContext.decodeAudioData(arrayBuffer, resolve, reject)
       );
       audioContext.close();
 
