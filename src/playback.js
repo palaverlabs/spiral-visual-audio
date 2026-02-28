@@ -66,9 +66,8 @@ export class PlaybackManager {
       this._latestProgress = startProgress;
 
       const isStereo = right !== null;
-      this._node = new AudioWorkletNode(ctx, 'groove-processor', {
-        outputChannelCount: [isStereo ? 2 : 1],
-      });
+      // outputChannelCount option omitted — causes errors on some iOS Safari versions.
+      this._node = new AudioWorkletNode(ctx, 'groove-processor');
       this._node.connect(ctx.destination);
 
       this._node.port.onmessage = ({ data }) => {
@@ -85,8 +84,10 @@ export class PlaybackManager {
         }
       };
 
-      const leftCopy = left.buffer.slice(0);
-      const rightCopy = right ? right.buffer.slice(0) : null;
+      // Float32Array.slice() creates a clean copy in its own buffer at byteOffset=0.
+      // Using .buffer.slice() is unsafe if the array shares a buffer with other channels.
+      const leftCopy = left.slice(0).buffer;
+      const rightCopy = right ? right.slice(0).buffer : null;
       const transferList = rightCopy ? [leftCopy, rightCopy] : [leftCopy];
 
       this._node.port.postMessage({
@@ -101,7 +102,9 @@ export class PlaybackManager {
       this.onDebug(`Playback ready: ${speed}x, ${this._totalDuration.toFixed(2)}s${isStereo ? ' [stereo]' : ''}`);
     } catch (err) {
       this.isPlaying = false;
-      this.onDebug(`Playback error: ${err.message}`);
+      const msg = `Playback error: ${err.message}`;
+      this.onDebug(msg);
+      this.onError?.(msg);
       console.error(err);
       this.onStop();
     }

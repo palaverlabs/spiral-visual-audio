@@ -37,6 +37,7 @@ class App {
     this.renderer = new Renderer(document.getElementById('grooveCanvas'));
 
     this.playback = new PlaybackManager({
+      onError: (msg) => this._setStatus(msg, 'error'),
       onFrame: ({ progress, audioTimePosition, amplitude = 0 }) => {
         if (!this.isDragging) {
           const now = performance.now();
@@ -200,6 +201,7 @@ class App {
     try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const audioBuffer = await audioContext.decodeAudioData(await file.arrayBuffer());
+      audioContext.close();
 
       this.originalAudio = audioBuffer.getChannelData(0);
       this.originalAudioR = audioBuffer.numberOfChannels > 1
