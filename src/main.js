@@ -200,11 +200,24 @@ class App {
     this._setStatus('Loading audio file...', 'info');
     try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      // Wrap in explicit Promise — older Safari decodeAudioData is callback-only.
-      const arrayBuffer = await file.arrayBuffer();
-      const audioBuffer = await new Promise((resolve, reject) =>
-        audioContext.decodeAudioData(arrayBuffer, resolve, reject)
-      );
+
+      let arrayBuffer = await file.arrayBuffer();
+      let audioBuffer;
+
+      // Try native decode first; fall back to ffmpeg.wasm for unsupported formats.
+      try {
+        audioBuffer = await new Promise((resolve, reject) =>
+          audioContext.decodeAudioData(arrayBuffer, resolve, reject)
+        );
+      } catch (_nativeErr) {
+        this.debug(`Native decode failed for ${file.name} — trying FFmpeg fallback`);
+        const { transcodeToWav } = await import('./transcode.js');
+        arrayBuffer = await transcodeToWav(file, (msg) => this._setStatus(msg, 'info'));
+        audioBuffer = await new Promise((resolve, reject) =>
+          audioContext.decodeAudioData(arrayBuffer, resolve, reject)
+        );
+      }
+
       audioContext.close();
 
       this.originalAudio = audioBuffer.getChannelData(0);

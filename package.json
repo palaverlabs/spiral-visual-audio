@@ -13,5 +13,9 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2"
   }
 }
