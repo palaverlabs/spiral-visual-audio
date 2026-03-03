@@ -465,6 +465,13 @@ input[type="file"] { display: none; }
 
 .nav-link:hover { color: var(--text); }
 
+@media (max-width: 480px) {
+  .site-nav { padding: 10px 16px; }
+  .nav-left { gap: 14px; }
+  .nav-logo-link .logo { height: 28px; }
+  .nav-link { font-size: 10px; letter-spacing: 0.08em; }
+}
+
 /* ── Main view container ── */
 #view {
   flex: 1;
