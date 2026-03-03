@@ -76,6 +76,64 @@ export async function recordView({ id }) {
     });
   }
 
+  // Edition UI
+  if (record.edition_size) {
+    const editionEl = document.createElement('div');
+    editionEl.className = 'record-edition';
+    editionEl.id = 'recordEdition';
+    document.getElementById('recordMeta').after(editionEl);
+
+    const renderEdition = async () => {
+      const { count: claimed } = await supabase
+        .from('collections')
+        .select('*', { count: 'exact', head: true })
+        .eq('record_id', id);
+
+      const soldOut = claimed >= record.edition_size;
+      let html = `<span class="edition-label">Edition of ${record.edition_size} · ${claimed} claimed</span>`;
+      if (soldOut) {
+        html += ` <span class="edition-badge sold-out">Sold Out</span>`;
+      }
+
+      if (user) {
+        const { data: owned } = await supabase
+          .from('collections')
+          .select('edition_number')
+          .eq('record_id', id)
+          .eq('user_id', user.id)
+          .single();
+
+        if (owned) {
+          html += ` <span class="edition-badge owned">You own #${owned.edition_number}</span>`;
+        } else if (!soldOut) {
+          html += ` <button class="action-btn edition-collect-btn" id="collectBtn">Collect</button>`;
+        }
+      } else if (!soldOut) {
+        html += ` <span class="edition-sign-in"><a href="/auth">Sign in</a> to collect</span>`;
+      }
+
+      editionEl.innerHTML = html;
+
+      const collectBtn = document.getElementById('collectBtn');
+      if (collectBtn) {
+        collectBtn.addEventListener('click', async () => {
+          collectBtn.disabled = true;
+          collectBtn.textContent = 'Collecting...';
+          const { data: num, error: claimErr } = await supabase.rpc('claim_edition', { p_record_id: id });
+          if (claimErr) {
+            collectBtn.disabled = false;
+            collectBtn.textContent = 'Collect';
+            setStatus(claimErr.message.includes('Sold out') ? 'Sold out!' : `Failed: ${claimErr.message}`, 'error');
+          } else {
+            await renderEdition();
+          }
+        });
+      }
+    };
+
+    await renderEdition();
+  }
+
   const { data: urlData } = supabase.storage.from('records').getPublicUrl(record.file_path);
   const svgUrl = urlData?.publicUrl;
   if (!svgUrl) { setStatus('Could not resolve file URL.', 'error'); return; }

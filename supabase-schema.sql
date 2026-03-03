@@ -63,6 +63,46 @@ create policy "records_update" on public.records for update
 create policy "records_delete" on public.records for delete
   using (auth.uid() = user_id);
 
+-- Limited editions
+ALTER TABLE public.records ADD COLUMN IF NOT EXISTS edition_size integer DEFAULT NULL;
+
+-- Collections table (fan library)
+CREATE TABLE IF NOT EXISTS public.collections (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  record_id      uuid NOT NULL REFERENCES public.records(id) ON DELETE CASCADE,
+  user_id        uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  edition_number integer NOT NULL,
+  collected_at   timestamptz DEFAULT now(),
+  UNIQUE(record_id, user_id),
+  UNIQUE(record_id, edition_number)
+);
+
+ALTER TABLE public.collections ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "collections_select" ON public.collections FOR SELECT USING (true);
+CREATE POLICY "collections_insert" ON public.collections FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- Atomic edition claim (prevents race conditions)
+CREATE OR REPLACE FUNCTION public.claim_edition(p_record_id uuid)
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  v_size  integer;
+  v_count integer;
+  v_num   integer;
+BEGIN
+  SELECT edition_size INTO v_size FROM public.records WHERE id = p_record_id;
+  IF v_size IS NULL THEN RAISE EXCEPTION 'Not a limited edition'; END IF;
+
+  SELECT COUNT(*) INTO v_count FROM public.collections WHERE record_id = p_record_id;
+  IF v_count >= v_size THEN RAISE EXCEPTION 'Sold out'; END IF;
+
+  v_num := v_count + 1;
+  INSERT INTO public.collections (record_id, user_id, edition_number)
+    VALUES (p_record_id, auth.uid(), v_num);
+  RETURN v_num;
+END;
+$$;
+
 -- Storage bucket: create a public bucket named "records" in the Supabase dashboard,
 -- then add this policy so authenticated users can upload to their own folder:
 --

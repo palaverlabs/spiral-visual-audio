@@ -11,6 +11,7 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata) {
       <div class="publish-form" id="publishForm" hidden>
         <input type="text" id="publishTitle" placeholder="Title (required)" maxlength="100">
         <input type="text" id="publishArtist" placeholder="Artist / tag (optional)" maxlength="100">
+        <input type="number" id="publishEdition" placeholder="Edition size (leave blank for unlimited)" min="1" step="1">
         <label class="publish-public-row">
           <input type="checkbox" id="publishPublic" checked>
           <span>Public</span>
@@ -75,6 +76,7 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata) {
         file_path: filePath,
         file_size: blob.size,
         is_public: document.getElementById('publishPublic').checked,
+        edition_size: parseInt(document.getElementById('publishEdition').value) || null,
       });
       if (insertError) throw insertError;
 

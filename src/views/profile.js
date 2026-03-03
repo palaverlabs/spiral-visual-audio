@@ -14,6 +14,7 @@ export async function profileView({ username }) {
       <div class="feed-grid" id="profileGrid">
         <div class="feed-loading">Loading...</div>
       </div>
+      <div id="profileCollection"></div>
     </div>`;
 
   if (!supabase) return;
@@ -58,6 +59,35 @@ export async function profileView({ username }) {
   grid.querySelectorAll('.record-card').forEach(card =>
     card.addEventListener('click', () => navigate(`/r/${card.dataset.id}`))
   );
+
+  // Collection section
+  const { data: collected } = await supabase
+    .from('collections')
+    .select('edition_number, records(id, title, artist, plays, edition_size)')
+    .eq('user_id', user.id)
+    .order('collected_at', { ascending: false });
+
+  if (collected?.length) {
+    const collectionEl = document.getElementById('profileCollection');
+    collectionEl.innerHTML = `<h3 class="profile-section-heading">Collection</h3>
+      <div class="feed-grid" id="collectionGrid"></div>`;
+
+    document.getElementById('collectionGrid').innerHTML = collected.map(c => {
+      const r = c.records;
+      return `<div class="record-card" data-id="${r.id}">
+        <div class="record-card-vinyl"></div>
+        <div class="record-card-info">
+          <div class="record-card-title">${esc(r.title)}</div>
+          ${r.artist ? `<div class="record-card-artist">${esc(r.artist)}</div>` : ''}
+          <div class="record-card-meta">#${c.edition_number} of ${r.edition_size} · ${r.plays ?? 0} plays</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    document.getElementById('collectionGrid').querySelectorAll('.record-card').forEach(card =>
+      card.addEventListener('click', () => navigate(`/r/${card.dataset.id}`))
+    );
+  }
 }
 
 function esc(s) {
