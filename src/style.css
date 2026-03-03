@@ -688,6 +688,18 @@ input[type="file"] { display: none; }
   gap: 12px;
 }
 
+.record-delete-btn {
+  color: var(--status-error);
+  border-color: rgba(255,68,68,0.25);
+  margin-top: 24px;
+}
+
+.record-delete-btn:hover:not(:disabled) {
+  background: rgba(255,68,68,0.08);
+  border-color: rgba(255,68,68,0.5);
+  box-shadow: none;
+}
+
 /* ── Publish panel ── */
 .publish-panel {
   margin-top: 10px;

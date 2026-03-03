@@ -52,6 +52,30 @@ export async function recordView({ id }) {
     `${record.plays ?? 0} plays`,
   ].filter(Boolean).join(' · ');
 
+  // Show delete button if current user owns this record
+  const { data: { user } = {} } = await supabase.auth.getUser().catch(() => ({ data: {} }));
+  if (user && user.id === record.user_id) {
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'action-btn record-delete-btn';
+    deleteBtn.textContent = 'Delete record';
+    document.getElementById('recordMeta').after(deleteBtn);
+    deleteBtn.addEventListener('click', async () => {
+      if (!confirm('Delete this record? This cannot be undone.')) return;
+      deleteBtn.disabled = true;
+      deleteBtn.textContent = 'Deleting...';
+      try {
+        await supabase.storage.from('records').remove([record.file_path]);
+        const { error: delErr } = await supabase.from('records').delete().eq('id', id);
+        if (delErr) throw delErr;
+        navigate('/');
+      } catch (err) {
+        setStatus(`Delete failed: ${err.message}`, 'error');
+        deleteBtn.disabled = false;
+        deleteBtn.textContent = 'Delete record';
+      }
+    });
+  }
+
   const { data: urlData } = supabase.storage.from('records').getPublicUrl(record.file_path);
   const svgUrl = urlData?.publicUrl;
   if (!svgUrl) { setStatus('Could not resolve file URL.', 'error'); return; }
