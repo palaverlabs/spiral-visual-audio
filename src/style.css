@@ -583,6 +583,7 @@ input[type="file"] { display: none; }
 .auth-tab:hover { color: var(--text); }
 .auth-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
+.auth-page input[type="text"],
 .auth-page input[type="email"],
 .auth-page input[type="password"] {
   display: block;

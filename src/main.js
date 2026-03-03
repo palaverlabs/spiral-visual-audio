@@ -19,15 +19,19 @@ async function updateNav() {
   const link = document.getElementById('navAuthLink');
   if (!link) return;
   if (!supabase) { link.textContent = 'Sign In'; return; }
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
-    link.textContent = 'Sign Out';
-    link.dataset.route = '__signout';
-    link.removeAttribute('href');
-  } else {
-    link.textContent = 'Sign In';
-    link.dataset.route = '/auth';
-    link.href = '/auth';
+  try {
+    const { data } = await supabase.auth.getUser();
+    if (data?.user) {
+      link.textContent = 'Sign Out';
+      link.dataset.route = '__signout';
+      link.removeAttribute('href');
+    } else {
+      link.textContent = 'Sign In';
+      link.dataset.route = '/auth';
+      link.href = '/auth';
+    }
+  } catch {
+    // network failure — leave nav as-is
   }
 }
 
