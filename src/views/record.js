@@ -1,6 +1,9 @@
 import { supabase } from '../supabase.js';
 import { navigate } from '../router.js';
 
+const SVG_PLAY = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>`;
+const SVG_PAUSE = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="5" y="4" width="4" height="16"/><rect x="15" y="4" width="4" height="16"/></svg>`;
+
 export async function recordView({ id }) {
   document.getElementById('view').innerHTML = `
     <div class="record-page">
@@ -17,7 +20,7 @@ export async function recordView({ id }) {
         <div class="record-transport">
           <div class="play-wrap" id="recordPlayWrap">
             <div class="play-ring"></div>
-            <button class="play-btn" id="recordPlayBtn" disabled>&#9654;</button>
+            <button class="play-btn" id="recordPlayBtn" disabled></button>
           </div>
           <span class="time-display">
             <span id="recordCurrentTime">0:00</span>
@@ -215,7 +218,7 @@ export async function recordView({ id }) {
       onStop: () => {
         const btn = document.getElementById('recordPlayBtn');
         const wrap = document.getElementById('recordPlayWrap');
-        if (btn) btn.textContent = '▶';
+        if (btn) btn.innerHTML = SVG_PLAY;
         if (wrap) wrap.classList.remove('playing');
       },
       onDebug: () => {},
@@ -223,14 +226,15 @@ export async function recordView({ id }) {
 
     const btn = document.getElementById('recordPlayBtn');
     btn.disabled = false;
+    btn.innerHTML = SVG_PLAY;
     btn.addEventListener('click', async () => {
       if (playback.isPlaying || isStopping) {
         isStopping = true;
-        btn.textContent = '▶';
+        btn.innerHTML = SVG_PLAY;
         document.getElementById('recordPlayWrap')?.classList.remove('playing');
       } else {
         playback.unlock();
-        btn.textContent = '⏸';
+        btn.innerHTML = SVG_PAUSE;
         document.getElementById('recordPlayWrap')?.classList.add('playing');
         spinRate = 0; isStopping = false;
         await playback.start(
