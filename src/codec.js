@@ -91,9 +91,10 @@ export function encodeToSVG(samples, opts = {}) {
   //   y = cy + (rBase + k·mid)·sinθ + k·side·cosθ
   // This is a rotation of (rBase+k·mid, k·side) by θ — exact inverse via dot products.
   // Mono: standard radial displacement only.
-  const pts = new Array(N);
+  const pathParts = new Array(N);
   const groovePoints = new Float32Array(N * 2);
   let xErr = 0, yErr = 0;
+  let prevXQ = 0, prevYQ = 0;
 
   for (let i = 0; i < N; i++) {
     const t = i / (N - 1);
@@ -119,7 +120,9 @@ export function encodeToSVG(samples, opts = {}) {
     xErr = xRaw - xQ;
     yErr = yRaw - yQ;
 
-    pts[i] = `${xQ},${yQ}`;
+    pathParts[i] = i === 0 ? `${xQ},${yQ}` : `${xQ - prevXQ},${yQ - prevYQ}`;
+    prevXQ = xQ;
+    prevYQ = yQ;
     groovePoints[i * 2]     = xQ / s;
     groovePoints[i * 2 + 1] = yQ / s;
   }
@@ -144,7 +147,7 @@ export function encodeToSVG(samples, opts = {}) {
   </defs>
   <circle cx="${cx_s}" cy="${cy_s}" r="${outerR_s}" fill="url(#discGrad)" stroke="#233242" stroke-width="${2 * s}"/>
   <circle cx="${cx_s}" cy="${cy_s}" r="${innerR_s}" fill="#0a0d11" stroke="#22303b" stroke-width="${2 * s}"/>
-  <polyline id="audioGroove" fill="none" stroke="#5ad8cf" stroke-width="${0.8 * s}" stroke-linecap="round" points="${pts.join(' ')}" />
+  <path id="audioGroove" fill="none" stroke="#5ad8cf" stroke-width="${0.8 * s}" stroke-linecap="round" d="M ${pathParts[0]} l ${pathParts.slice(1).join(' ')}" />
   <desc>Geometry-only spiral audio. sr=${effectiveSr}; Rout=${Rout}; Rin=${Rin}; turns=${turns}; k=${k.toFixed(6)}; originalLength=${N}; mulaw=1; riaa=1; riaaHz=${ENC_RIAA_CORNER_HZ}; scale=${s}${stereoFlag}.</desc>
 </svg>`;
 
@@ -160,8 +163,9 @@ export function decodeFromSVG(svgString, defaults = {}) {
   } = defaults;
 
   const doc = new DOMParser().parseFromString(svgString, 'image/svg+xml');
-  const poly = doc.querySelector('polyline#audioGroove');
-  if (!poly) throw new Error('No groove polyline found in SVG');
+  const pathEl = doc.querySelector('path#audioGroove');
+  const polyEl = doc.querySelector('polyline#audioGroove');
+  if (!pathEl && !polyEl) throw new Error('No groove element found in SVG');
 
   // Parse desc first — coordScale and riaaHz are needed before any coordinate parsing.
   let sr = 22050, originalLength = 0, storedK = 0;
@@ -194,17 +198,36 @@ export function decodeFromSVG(svgString, defaults = {}) {
     cy = (parseFloat(firstCircle.getAttribute('cy')) || defaultCy * coordScale) / coordScale;
   }
 
-  // Parse polyline points, normalizing to 1x space.
-  const pointsStr = (poly.getAttribute('points') || '').trim();
-  if (!pointsStr) throw new Error('Empty points attribute in polyline');
-  const rawParts = pointsStr.split(/\s+/);
-  const coords = new Array(rawParts.length);
-  const groovePoints = new Float32Array(rawParts.length * 2);
-  for (let i = 0; i < rawParts.length; i++) {
-    const [x, y] = rawParts[i].split(',').map(Number);
-    coords[i] = { x: x / coordScale, y: y / coordScale };
-    groovePoints[i * 2]     = x / coordScale;
-    groovePoints[i * 2 + 1] = y / coordScale;
+  // Parse coordinates — path with relative deltas (new) or absolute polyline (legacy).
+  let coords, groovePoints;
+  if (pathEl) {
+    const nums = (pathEl.getAttribute('d') || '').match(/-?\d+/g);
+    if (!nums || nums.length < 2) throw new Error('Invalid path d attribute');
+    const N = nums.length >> 1;
+    coords = new Array(N);
+    groovePoints = new Float32Array(N * 2);
+    let x = parseInt(nums[0]), y = parseInt(nums[1]);
+    coords[0] = { x: x / coordScale, y: y / coordScale };
+    groovePoints[0] = x / coordScale;
+    groovePoints[1] = y / coordScale;
+    for (let i = 1; i < N; i++) {
+      x += parseInt(nums[i * 2]);
+      y += parseInt(nums[i * 2 + 1]);
+      coords[i] = { x: x / coordScale, y: y / coordScale };
+      groovePoints[i * 2]     = x / coordScale;
+      groovePoints[i * 2 + 1] = y / coordScale;
+    }
+  } else {
+    const rawParts = (polyEl.getAttribute('points') || '').trim().split(/\s+/);
+    const N = rawParts.length;
+    coords = new Array(N);
+    groovePoints = new Float32Array(N * 2);
+    for (let i = 0; i < N; i++) {
+      const [x, y] = rawParts[i].split(',').map(Number);
+      coords[i] = { x: x / coordScale, y: y / coordScale };
+      groovePoints[i * 2]     = x / coordScale;
+      groovePoints[i * 2 + 1] = y / coordScale;
+    }
   }
   const N = coords.length;
 
