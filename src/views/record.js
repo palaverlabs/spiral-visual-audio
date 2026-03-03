@@ -245,10 +245,31 @@ export async function recordView({ id }) {
       }
     });
 
+    // Resume AudioContext when screen wakes / tab becomes visible
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') playback.resumeIfSuspended();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    // MediaSession: tells the OS this is a media-playing page (lock screen controls)
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: record.title,
+        artist: record.artist || (record.users?.username ? `@${record.users.username}` : 'Spiral Audio'),
+        album: 'Spiral Audio',
+      });
+      navigator.mediaSession.setActionHandler('play', () => btn.click());
+      navigator.mediaSession.setActionHandler('pause', () => btn.click());
+    }
+
     // Increment play count (fire-and-forget)
     supabase.from('records').update({ plays: (record.plays ?? 0) + 1 }).eq('id', id);
 
-    return () => playback.stop();
+    return () => {
+      playback.stop();
+      document.removeEventListener('visibilitychange', onVisibility);
+      if ('mediaSession' in navigator) navigator.mediaSession.metadata = null;
+    };
   } catch (err) {
     setStatus(`Failed to load: ${err.message}`, 'error');
   }

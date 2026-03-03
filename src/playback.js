@@ -144,6 +144,10 @@ export class PlaybackManager {
     this.onStop();
   }
 
+  resumeIfSuspended() {
+    if (this._ctx && this._ctx.state === 'suspended') this._ctx.resume();
+  }
+
   get latestProgress() { return this._latestProgress; }
 
   getFrequencyData() {
