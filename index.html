@@ -9,6 +9,9 @@
 </head>
 <body>
   <nav class="site-nav">
+    <button class="nav-hamburger" id="navHamburger" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
     <div class="nav-left">
       <a href="/" class="nav-link" data-route="/">Feed</a>
       <a href="/library" class="nav-link" data-route="/library">Library</a>
@@ -20,6 +23,11 @@
       <a href="/auth" class="nav-link" data-route="/auth" id="navAuthLink">Sign In</a>
     </div>
   </nav>
+  <div class="nav-drawer" id="navDrawer">
+    <a href="/" class="nav-drawer-link" data-route="/">Feed</a>
+    <a href="/library" class="nav-drawer-link" data-route="/library">Library</a>
+    <a href="/auth" class="nav-drawer-link" data-route="/auth" id="navAuthLinkMobile">Sign In</a>
+  </div>
   <main id="view"></main>
   <script type="module" src="/src/main.js"></script>
 </body>

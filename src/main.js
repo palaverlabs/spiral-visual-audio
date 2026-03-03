@@ -2,10 +2,16 @@ import './style.css';
 import { route, navigate, start } from './router.js';
 import { supabase } from './supabase.js';
 
+// Hamburger toggle
+const hamburger = document.getElementById('navHamburger');
+const drawer = document.getElementById('navDrawer');
+hamburger?.addEventListener('click', () => drawer?.classList.toggle('open'));
+
 // Intercept all [data-route] clicks for SPA navigation
 document.addEventListener('click', (e) => {
   const link = e.target.closest('[data-route]');
   if (!link) return;
+  drawer?.classList.remove('open'); // close drawer on any nav
   const r = link.dataset.route;
   if (r === '__signout') {
     e.preventDefault();
@@ -17,18 +23,25 @@ document.addEventListener('click', (e) => {
 
 async function updateNav() {
   const link = document.getElementById('navAuthLink');
+  const linkMobile = document.getElementById('navAuthLinkMobile');
   if (!link) return;
-  if (!supabase) { link.textContent = 'Sign In'; return; }
+  if (!supabase) { link.textContent = 'Sign In'; if (linkMobile) linkMobile.textContent = 'Sign In'; return; }
   try {
     const { data } = await supabase.auth.getUser();
     if (data?.user) {
-      link.textContent = 'Sign Out';
-      link.dataset.route = '__signout';
-      link.removeAttribute('href');
+      for (const el of [link, linkMobile]) {
+        if (!el) continue;
+        el.textContent = 'Sign Out';
+        el.dataset.route = '__signout';
+        el.removeAttribute('href');
+      }
     } else {
-      link.textContent = 'Sign In';
-      link.dataset.route = '/auth';
-      link.href = '/auth';
+      for (const el of [link, linkMobile]) {
+        if (!el) continue;
+        el.textContent = 'Sign In';
+        el.dataset.route = '/auth';
+        el.href = '/auth';
+      }
     }
   } catch {
     // network failure — leave nav as-is
