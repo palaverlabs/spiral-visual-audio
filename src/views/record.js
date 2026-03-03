@@ -124,7 +124,7 @@ export async function recordView({ id }) {
     const playback = new PlaybackManager({
       onFrame: ({ progress, audioTimePosition, amplitude = 0 }) => {
         const now = performance.now();
-        const dt = (now - lastFrameTime) / 1000;
+        const dt = Math.min((now - lastFrameTime) / 1000, 0.05);
         lastFrameTime = now;
 
         if (isStopping) {

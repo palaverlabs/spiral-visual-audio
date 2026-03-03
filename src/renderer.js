@@ -199,27 +199,27 @@ export class Renderer {
       const s = this.skin.stylus;
 
       // pulse: 1.0 at silence, up to ~4.0 on loud transients.
-      const pulse = 1 + amplitude * 5.0;
+      const pulse = 1 + amplitude * 3.0;
       ctx.save();
 
-      // Outer bloom — grows dramatically on hits.
+      // Outer bloom — grows on hits.
       ctx.shadowColor = s.bloom;
-      ctx.shadowBlur = (35 + amplitude * 80) * scale;
+      ctx.shadowBlur = (28 + amplitude * 45) * scale;
       ctx.beginPath();
       ctx.arc(sx, sy, 6 * pulse * scale, 0, TAU);
-      ctx.fillStyle = `rgba(${s.bloomFill[0]},${s.bloomFill[1]},${s.bloomFill[2]},${0.25 + amplitude * 0.25})`;
+      ctx.fillStyle = `rgba(${s.bloomFill[0]},${s.bloomFill[1]},${s.bloomFill[2]},${0.25 + amplitude * 0.20})`;
       ctx.fill();
 
       // Mid glow.
-      ctx.shadowBlur = (20 + amplitude * 40) * scale;
+      ctx.shadowBlur = (16 + amplitude * 28) * scale;
       ctx.beginPath();
       ctx.arc(sx, sy, 4 * pulse * scale, 0, TAU);
-      ctx.fillStyle = `rgba(${s.bloomFill[0]},${s.midG + (amplitude * 80 | 0)},${s.bloomFill[2]},${0.6 + amplitude * 0.3})`;
+      ctx.fillStyle = `rgba(${s.bloomFill[0]},${s.midG + (amplitude * 60 | 0)},${s.bloomFill[2]},${0.6 + amplitude * 0.25})`;
       ctx.fill();
 
       // Core dot — tight, bright.
       ctx.shadowColor = s.coreGlow;
-      ctx.shadowBlur = (8 + amplitude * 20) * scale;
+      ctx.shadowBlur = (7 + amplitude * 14) * scale;
       ctx.beginPath();
       ctx.arc(sx, sy, 2.5 * Math.max(1, pulse * 0.7) * scale, 0, TAU);
       ctx.fillStyle = s.core;
@@ -233,8 +233,8 @@ export class Renderer {
       ctx.fill();
 
       // Beam — lengthens and widens on transients.
-      const beamLen = (25 + amplitude * 40) * scale;
-      const beamW   = (2.5 + amplitude * 4) * scale;
+      const beamLen = (24 + amplitude * 26) * scale;
+      const beamW   = (2.2 + amplitude * 2.8) * scale;
       const [br, bg, bb] = s.beamRGB;
       const beamGrad = ctx.createLinearGradient(sx, sy, sx, sy - beamLen);
       beamGrad.addColorStop(0,   `rgba(${br},${bg},${bb},${0.5 + amplitude * 0.4})`);

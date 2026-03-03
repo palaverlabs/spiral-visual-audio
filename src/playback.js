@@ -82,9 +82,9 @@ export class PlaybackManager {
           this._latestProgress = data.v;
           const raw = data.amp || 0;
           if (raw > this._amplitude) {
-            this._amplitude = 0.6 * raw + 0.4 * this._amplitude;
+            this._amplitude = 0.35 * raw + 0.65 * this._amplitude;
           } else {
-            this._amplitude = 0.04 * raw + 0.96 * this._amplitude;
+            this._amplitude = 0.06 * raw + 0.94 * this._amplitude;
           }
         } else if (data.type === 'ended') {
           this.stop();
