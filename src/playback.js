@@ -11,6 +11,8 @@ export class PlaybackManager {
     this._ctx = null;          // persistent — never closed after creation
     this._workletLoaded = false;
     this._node = null;
+    this._analyser = null;
+    this._freqData = null;
     this._latestProgress = 0;
     this._amplitude = 0;
     this._totalDuration = 0;
@@ -68,7 +70,12 @@ export class PlaybackManager {
       const isStereo = right !== null;
       // outputChannelCount option omitted — causes errors on some iOS Safari versions.
       this._node = new AudioWorkletNode(ctx, 'groove-processor');
-      this._node.connect(ctx.destination);
+      this._analyser = ctx.createAnalyser();
+      this._analyser.fftSize = 256;
+      this._analyser.smoothingTimeConstant = 0.8;
+      this._freqData = new Uint8Array(this._analyser.frequencyBinCount);
+      this._node.connect(this._analyser);
+      this._analyser.connect(ctx.destination);
 
       this._node.port.onmessage = ({ data }) => {
         if (data.type === 'pos') {
@@ -123,6 +130,11 @@ export class PlaybackManager {
       cancelAnimationFrame(this.animationId);
       this.animationId = null;
     }
+    if (this._analyser) {
+      this._analyser.disconnect();
+      this._analyser = null;
+      this._freqData = null;
+    }
     if (this._node) {
       this._node.disconnect();
       this._node = null;
@@ -133,6 +145,12 @@ export class PlaybackManager {
   }
 
   get latestProgress() { return this._latestProgress; }
+
+  getFrequencyData() {
+    if (!this._analyser || !this._freqData) return null;
+    this._analyser.getByteFrequencyData(this._freqData);
+    return this._freqData;
+  }
 
   // audio: { left, right?, sampleRate } — exports stereo WAV if right is present.
   createWAVBlob(audio) {

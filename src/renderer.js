@@ -8,6 +8,8 @@ export class Renderer {
     this.skin = SKINS.classic.canvas;
     this._groovePoints = null;
     this._grooveGeom = {};
+    this._eqPeaks = null;
+    this._eqPeakHold = null;
   }
 
   setSkin(canvasSkin, groovePoints = null, geom = {}) {
@@ -19,10 +21,16 @@ export class Renderer {
     }
   }
 
-  drawEmptyDisc({ Rout = 220, Rin = 40, cx = 260, cy = 260 } = {}) {
+  drawEmptyDisc({ Rout = 220, Rin = 40, cx = 260, cy = 260 } = {}, freqData = null) {
     const { canvas } = this;
     const ctx = canvas.getContext('2d');
     const W = canvas.width;
+
+    if (this.skin.theme === 'spectrum') {
+      this._drawSpectrumEQ(ctx, W, freqData);
+      return;
+    }
+
     const scale = W / 520;
     const cxs = cx * scale, cys = cy * scale;
     const Routs = (Rout + 8) * scale;
@@ -109,10 +117,15 @@ export class Renderer {
     this.grooveImage = offscreen;
   }
 
-  drawDiscWithGroove(rotation, stylusProgress, { Rout = 220, Rin = 40, cx = 260, cy = 260 } = {}, amplitude = 0) {
+  drawDiscWithGroove(rotation, stylusProgress, { Rout = 220, Rin = 40, cx = 260, cy = 260 } = {}, amplitude = 0, freqData = null) {
     const { canvas } = this;
     const ctx = canvas.getContext('2d');
     const W = canvas.width;
+
+    if (this.skin.theme === 'spectrum') {
+      this._drawSpectrumEQ(ctx, W, freqData);
+      return;
+    }
     const scale = W / 520;
     const cxs = cx * scale, cys = cy * scale;
     const Routs = (Rout + 8) * scale;
@@ -275,8 +288,6 @@ export class Renderer {
     ctx.lineWidth = 1.5 * scale;
     ctx.stroke();
 
-    // Theme-specific disc art
-    if (this.skin.theme === 'eq') this._drawEqBars(ctx, scale, cxs, cys, Routs, Rins);
   }
 
   _drawLabel(ctx, scale, cxs, cys, labelR, hasGroove) {
@@ -462,79 +473,128 @@ export class Renderer {
     ctx.fillStyle = '#000'; ctx.fill();
   }
 
-  _drawEqBars(ctx, scale, cxs, cys, Routs, Rins) {
-    const numBars = 24;
-    const gap = 0.07; // radians gap between bars
-    const barAngle = TAU / numBars;
-    const span = Routs - Rins;
+  _drawSpectrumEQ(ctx, W, freqData) {
+    const NUM_BARS = 32;
+    const NUM_SEGS = 22;
+    const FALL_RATE = 0.010;
 
-    // Deterministic fake spectrum — blend of harmonics
-    const heights = Array.from({ length: numBars }, (_, i) => {
-      const t = i / numBars;
-      return Math.max(0.06, Math.min(0.92, Math.abs(
-        Math.sin(t * Math.PI * 4.1)       * 0.45 +
-        Math.sin(t * Math.PI * 9.3 + 1.2) * 0.30 +
-        Math.cos(t * Math.PI * 2.7 + 0.5) * 0.25
-      )));
-    });
+    const totalW  = W * 0.90;
+    const startX  = (W - totalW) / 2;
+    const barW    = totalW / NUM_BARS;
+    const gap     = barW * 0.11;
+    const netBarW = barW - gap * 2;
+    const maxBarH = W * 0.40;
+    const baseY   = W * 0.66;
+    const segH    = maxBarH / NUM_SEGS;
+    const segGap  = Math.max(1.5, segH * 0.10);
 
-    ctx.save();
+    // Background
+    ctx.clearRect(0, 0, W, W);
+    ctx.fillStyle = '#030504';
+    ctx.fillRect(0, 0, W, W);
 
-    // Pass 1 — wide diffuse bloom behind each bar
-    for (let i = 0; i < numBars; i++) {
-      const a0 = i * barAngle + gap / 2;
-      const a1 = (i + 1) * barAngle - gap / 2;
-      const h  = heights[i];
-      const outerR = Rins + span * h;
+    // Floor line
+    ctx.fillStyle = 'rgba(0,180,50,0.18)';
+    ctx.fillRect(startX, baseY + 2, totalW, 2);
 
-      ctx.beginPath();
-      ctx.arc(cxs, cys, outerR, a0, a1);
-      ctx.arc(cxs, cys, Rins,   a1, a0, true);
-      ctx.closePath();
-      ctx.shadowColor = `rgba(0,255,90,${0.5 + h * 0.3})`;
-      ctx.shadowBlur  = 20 * scale;
-      ctx.fillStyle   = `rgba(0,200,70,${0.08 + h * 0.12})`;
-      ctx.fill();
-    }
-    ctx.shadowBlur = 0;
-
-    // Pass 2 — solid sector fill
-    for (let i = 0; i < numBars; i++) {
-      const a0 = i * barAngle + gap / 2;
-      const a1 = (i + 1) * barAngle - gap / 2;
-      const h  = heights[i];
-      const outerR = Rins + span * h;
-
-      ctx.beginPath();
-      ctx.arc(cxs, cys, outerR, a0, a1);
-      ctx.arc(cxs, cys, Rins,   a1, a0, true);
-      ctx.closePath();
-
-      const fillGrad = ctx.createRadialGradient(cxs, cys, Rins, cxs, cys, outerR);
-      fillGrad.addColorStop(0,   `rgba(0,200,80,0.0)`);
-      fillGrad.addColorStop(0.5, `rgba(0,220,85,${0.12 + h * 0.16})`);
-      fillGrad.addColorStop(1,   `rgba(0,255,100,${0.22 + h * 0.26})`);
-      ctx.fillStyle = fillGrad;
-      ctx.fill();
+    // Init peak state
+    if (!this._eqPeaks || this._eqPeaks.length !== NUM_BARS) {
+      this._eqPeaks    = new Float32Array(NUM_BARS);
+      this._eqPeakHold = new Uint8Array(NUM_BARS);   // hold-frames counter
     }
 
-    // Pass 3 — bright glowing tip edge
-    for (let i = 0; i < numBars; i++) {
-      const a0 = i * barAngle + gap / 2;
-      const a1 = (i + 1) * barAngle - gap / 2;
-      const h  = heights[i];
-      const outerR = Rins + span * h;
-
-      ctx.beginPath();
-      ctx.arc(cxs, cys, outerR, a0, a1);
-      ctx.strokeStyle = `rgba(140,255,170,${0.60 + h * 0.38})`;
-      ctx.lineWidth   = 2.0 * scale;
-      ctx.shadowColor = 'rgba(0,255,100,1.0)';
-      ctx.shadowBlur  = 14 * scale;
-      ctx.stroke();
+    // Compute heights from freq data or idle pattern
+    const heights = new Float32Array(NUM_BARS);
+    if (freqData) {
+      // Log-ish distribution over the lower 75% of bins
+      const maxBin = Math.floor(freqData.length * 0.75);
+      for (let i = 0; i < NUM_BARS; i++) {
+        const t0 = Math.pow(maxBin, i / NUM_BARS);
+        const t1 = Math.pow(maxBin, (i + 1) / NUM_BARS);
+        const b0 = Math.floor(t0);
+        const b1 = Math.max(b0 + 1, Math.floor(t1));
+        let sum = 0, count = 0;
+        for (let b = b0; b < Math.min(b1, freqData.length); b++) { sum += freqData[b]; count++; }
+        heights[i] = count > 0 ? (sum / count) / 255 : 0;
+      }
+    } else {
+      for (let i = 0; i < NUM_BARS; i++) {
+        const t = i / NUM_BARS;
+        heights[i] = Math.max(0.03, Math.abs(
+          Math.sin(t * Math.PI * 3.7) * 0.22 +
+          Math.sin(t * Math.PI * 7.3 + 0.8) * 0.10 +
+          0.04
+        ));
+      }
     }
-    ctx.shadowBlur = 0;
-    ctx.restore();
+
+    // Update peaks with hold-then-fall
+    for (let i = 0; i < NUM_BARS; i++) {
+      if (heights[i] >= this._eqPeaks[i]) {
+        this._eqPeaks[i]    = heights[i];
+        this._eqPeakHold[i] = 18; // hold for ~18 frames
+      } else if (this._eqPeakHold[i] > 0) {
+        this._eqPeakHold[i]--;
+      } else {
+        this._eqPeaks[i] = Math.max(0, this._eqPeaks[i] - FALL_RATE);
+      }
+    }
+
+    // Draw bars
+    for (let i = 0; i < NUM_BARS; i++) {
+      const h      = heights[i];
+      const numSegs = Math.max(1, Math.round(h * NUM_SEGS));
+      const bx     = startX + i * barW + gap;
+
+      // Segments bottom-up
+      for (let s = 0; s < numSegs; s++) {
+        const sy = baseY - (s + 1) * segH + segGap / 2;
+        const t  = s / NUM_SEGS; // 0=bottom 1=top
+
+        // green → yellow → red
+        let r, g, b;
+        if (t < 0.5) { r = Math.round(t * 2 * 245); g = 200 + Math.round(t * 2 * 20); b = 0; }
+        else          { r = 255; g = Math.round((1 - (t - 0.5) * 2) * 175); b = 0; }
+
+        // Glow on top 2 segments
+        if (s >= numSegs - 2) {
+          ctx.shadowColor = `rgba(${r},${g},${b},0.9)`;
+          ctx.shadowBlur  = 7;
+        } else {
+          ctx.shadowBlur = 0;
+        }
+
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(bx, sy, netBarW, segH - segGap);
+      }
+      ctx.shadowBlur = 0;
+
+      // Peak indicator
+      const pk = this._eqPeaks[i];
+      if (pk > 0.04) {
+        const pkSeg = Math.min(NUM_SEGS - 1, Math.round(pk * NUM_SEGS));
+        const pkY   = baseY - (pkSeg + 1) * segH + segGap / 2;
+        ctx.fillStyle  = 'rgba(255, 55, 15, 0.95)';
+        ctx.shadowColor = 'rgba(255,70,0,1)';
+        ctx.shadowBlur  = 9;
+        ctx.fillRect(bx, pkY, netBarW, segH - segGap);
+        ctx.shadowBlur = 0;
+      }
+
+      // Reflection — 7 segments below baseline, fading
+      const reflSegs = Math.min(numSegs, 7);
+      for (let s = 0; s < reflSegs; s++) {
+        const sy    = baseY + s * segH + segGap / 2 + 4;
+        const alpha = (0.20 - s * 0.025) * Math.max(0.4, h);
+        if (alpha <= 0) break;
+        const t  = s / NUM_SEGS;
+        let r, g, b;
+        if (t < 0.5) { r = Math.round(t * 2 * 245); g = 200; b = 0; }
+        else          { r = 255; g = Math.round((1 - (t - 0.5) * 2) * 175); b = 0; }
+        ctx.fillStyle = `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
+        ctx.fillRect(bx, sy, netBarW, segH - segGap);
+      }
+    }
   }
 
   _drawSheen(ctx, W, cxs, cys, Routs, scale) {

@@ -275,7 +275,7 @@ const EQ_CSS = {
 };
 
 const EQ_CANVAS = {
-  theme: 'eq',
+  theme: 'spectrum',
   disc: {
     bg: ['#020e06', '#010904', '#010603'],
     rim: '#032812',
@@ -338,7 +338,7 @@ export const SKINS = {
     canvas: OWL_CANVAS,
   },
   eq: {
-    name: 'EQ',
+    name: 'SPECTRUM',
     fontUrl: null,
     css: EQ_CSS,
     canvas: EQ_CANVAS,
