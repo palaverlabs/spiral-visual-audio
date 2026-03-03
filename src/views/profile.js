@@ -35,7 +35,7 @@ export async function profileView({ username }) {
 
   const { data: records } = await supabase
     .from('records')
-    .select('id, title, artist, plays, created_at')
+    .select('id, title, artist, plays, created_at, thumbnail_path')
     .eq('user_id', user.id)
     .eq('is_public', true)
     .order('created_at', { ascending: false });
@@ -46,15 +46,23 @@ export async function profileView({ username }) {
     return;
   }
 
-  grid.innerHTML = records.map(r => `
+  grid.innerHTML = records.map(r => {
+    const thumbUrl = r.thumbnail_path
+      ? supabase.storage.from('records').getPublicUrl(r.thumbnail_path).data.publicUrl
+      : null;
+    const vinyl = thumbUrl
+      ? `<img class="record-card-vinyl" src="${thumbUrl}" alt="">`
+      : `<div class="record-card-vinyl"></div>`;
+    return `
     <div class="record-card" data-id="${r.id}">
-      <div class="record-card-vinyl"></div>
+      ${vinyl}
       <div class="record-card-info">
         <div class="record-card-title">${esc(r.title)}</div>
         ${r.artist ? `<div class="record-card-artist">${esc(r.artist)}</div>` : ''}
         <div class="record-card-meta">${r.plays ?? 0} plays</div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   grid.querySelectorAll('.record-card').forEach(card =>
     card.addEventListener('click', () => navigate(`/r/${card.dataset.id}`))
@@ -63,7 +71,7 @@ export async function profileView({ username }) {
   // Collection section
   const { data: collected } = await supabase
     .from('collections')
-    .select('edition_number, records(id, title, artist, plays, edition_size)')
+    .select('edition_number, records(id, title, artist, plays, edition_size, thumbnail_path)')
     .eq('user_id', user.id)
     .order('collected_at', { ascending: false });
 
@@ -74,8 +82,14 @@ export async function profileView({ username }) {
 
     document.getElementById('collectionGrid').innerHTML = collected.map(c => {
       const r = c.records;
+      const thumbUrl = r.thumbnail_path
+        ? supabase.storage.from('records').getPublicUrl(r.thumbnail_path).data.publicUrl
+        : null;
+      const vinyl = thumbUrl
+        ? `<img class="record-card-vinyl" src="${thumbUrl}" alt="">`
+        : `<div class="record-card-vinyl"></div>`;
       return `<div class="record-card" data-id="${r.id}">
-        <div class="record-card-vinyl"></div>
+        ${vinyl}
         <div class="record-card-info">
           <div class="record-card-title">${esc(r.title)}</div>
           ${r.artist ? `<div class="record-card-artist">${esc(r.artist)}</div>` : ''}

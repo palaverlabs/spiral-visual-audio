@@ -143,7 +143,18 @@ export async function recordView({ id }) {
   try {
     const resp = await fetch(svgUrl);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const svgText = await resp.text();
+    const buf = await resp.arrayBuffer();
+    const isGzip = new Uint8Array(buf, 0, 2)[0] === 0x1f && new Uint8Array(buf, 0, 2)[1] === 0x8b;
+    let svgText;
+    if (isGzip) {
+      const ds = new DecompressionStream('gzip');
+      const writer = ds.writable.getWriter();
+      writer.write(new Uint8Array(buf));
+      writer.close();
+      svgText = await new Response(ds.readable).text();
+    } else {
+      svgText = new TextDecoder().decode(buf);
+    }
 
     const [
       { decodeFromSVG },

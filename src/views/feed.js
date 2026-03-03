@@ -18,7 +18,7 @@ export async function feedView() {
 
   const { data, error } = await supabase
     .from('records')
-    .select('id, title, artist, duration, plays, created_at, users(username)')
+    .select('id, title, artist, duration, plays, created_at, thumbnail_path, users(username)')
     .eq('is_public', true)
     .order('created_at', { ascending: false })
     .limit(24);
@@ -29,15 +29,23 @@ export async function feedView() {
     return;
   }
 
-  grid.innerHTML = data.map(r => `
+  grid.innerHTML = data.map(r => {
+    const thumbUrl = r.thumbnail_path
+      ? supabase.storage.from('records').getPublicUrl(r.thumbnail_path).data.publicUrl
+      : null;
+    const vinyl = thumbUrl
+      ? `<img class="record-card-vinyl" src="${thumbUrl}" alt="">`
+      : `<div class="record-card-vinyl"></div>`;
+    return `
     <div class="record-card" data-id="${r.id}">
-      <div class="record-card-vinyl"></div>
+      ${vinyl}
       <div class="record-card-info">
         <div class="record-card-title">${esc(r.title)}</div>
         ${r.artist ? `<div class="record-card-artist">${esc(r.artist)}</div>` : ''}
         <div class="record-card-meta">${r.users?.username ? `@${esc(r.users.username)}` : ''} &middot; ${r.plays ?? 0} plays</div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   grid.querySelectorAll('.record-card').forEach(card =>
     card.addEventListener('click', () => navigate(`/r/${card.dataset.id}`))

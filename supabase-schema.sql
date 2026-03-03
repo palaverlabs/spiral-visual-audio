@@ -66,6 +66,9 @@ create policy "records_delete" on public.records for delete
 -- Limited editions
 ALTER TABLE public.records ADD COLUMN IF NOT EXISTS edition_size integer DEFAULT NULL;
 
+-- Thumbnail (JPEG preview captured at publish time)
+ALTER TABLE public.records ADD COLUMN IF NOT EXISTS thumbnail_path text;
+
 -- Collections table (fan library)
 CREATE TABLE IF NOT EXISTS public.collections (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),

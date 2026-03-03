@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js';
 import { navigate } from './router.js';
 
-export function renderPublishPanel(container, getGrooveSVG, getMetadata) {
+export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThumbBlob) {
   container.innerHTML = `
     <div class="publish-panel">
       <div class="publish-toggle" id="publishToggle">
@@ -55,12 +55,27 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata) {
     try {
       const recordId = crypto.randomUUID();
       const filePath = `${user.id}/${recordId}.svg`;
-      const blob = new Blob([svg], { type: 'image/svg+xml' });
+      const raw = new TextEncoder().encode(svg);
+      const cs = new CompressionStream('gzip');
+      const writer = cs.writable.getWriter();
+      writer.write(raw);
+      writer.close();
+      const compressed = await new Response(cs.readable).arrayBuffer();
+      const blob = new Blob([compressed], { type: 'image/svg+xml' });
 
       const { error: uploadError } = await supabase.storage
         .from('records')
         .upload(filePath, blob, { contentType: 'image/svg+xml' });
       if (uploadError) throw uploadError;
+
+      let thumbPath = null;
+      if (getThumbBlob) {
+        try {
+          const thumbBlob = await getThumbBlob();
+          thumbPath = `${user.id}/${recordId}_thumb.jpg`;
+          await supabase.storage.from('records').upload(thumbPath, thumbBlob, { contentType: 'image/jpeg' });
+        } catch (_) { thumbPath = null; }
+      }
 
       const meta = getMetadata();
       const { error: insertError } = await supabase.from('records').insert({
@@ -77,6 +92,7 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata) {
         file_size: blob.size,
         is_public: document.getElementById('publishPublic').checked,
         edition_size: parseInt(document.getElementById('publishEdition').value) || null,
+        thumbnail_path: thumbPath,
       });
       if (insertError) throw insertError;
 

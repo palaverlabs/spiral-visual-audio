@@ -441,6 +441,14 @@ class App {
         turns: this.spiralTurns,
         sampleRate: this.sampleRate,
         stereo: !!(this.originalAudioR || this.decodedAudioR),
+      }),
+      () => new Promise(resolve => {
+        const src = this.renderer.canvas;
+        const off = document.createElement('canvas');
+        off.width = 400;
+        off.height = 400;
+        off.getContext('2d').drawImage(src, 0, 0, 400, 400);
+        off.toBlob(resolve, 'image/jpeg', 0.8);
       })
     );
   }
