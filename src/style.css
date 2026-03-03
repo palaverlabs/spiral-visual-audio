@@ -419,24 +419,17 @@ input[type="file"] { display: none; }
   width: 100%;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 14px 24px;
   border-bottom: 1px solid var(--panel-border);
   flex-shrink: 0;
 }
 
-.nav-link {
-  color: var(--text-muted);
-  text-decoration: none;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  transition: color 0.15s;
-  min-width: 60px;
+.nav-left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex: 1;
 }
-
-.nav-link:hover { color: var(--text); }
 
 .nav-logo-link {
   display: flex;
@@ -456,9 +449,21 @@ input[type="file"] { display: none; }
   display: flex;
   align-items: center;
   gap: 16px;
-  min-width: 60px;
+  flex: 1;
   justify-content: flex-end;
 }
+
+.nav-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: color 0.15s;
+}
+
+.nav-link:hover { color: var(--text); }
 
 /* ── Main view container ── */
 #view {
