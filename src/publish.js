@@ -63,6 +63,7 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
       const compressed = await new Response(cs.readable).arrayBuffer();
       const blob = new Blob([compressed], { type: 'image/svg+xml' });
 
+      setStatus(`Uploading ${(blob.size / 1024 / 1024).toFixed(1)} MB...`);
       const { error: uploadError } = await supabase.storage
         .from('records')
         .upload(filePath, blob, { contentType: 'image/svg+xml' });
