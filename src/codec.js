@@ -114,8 +114,8 @@ export function encodeToSVG(samples, opts = {}) {
       yRaw = cy_s + r_s * sinT + yErr;
     }
 
-    const xQ = Math.round(xRaw);
-    const yQ = Math.round(yRaw);
+    const xQ = Math.round(xRaw + 0.5 * (Math.random() - Math.random()));
+    const yQ = Math.round(yRaw + 0.5 * (Math.random() - Math.random()));
     xErr = xRaw - xQ;
     yErr = yRaw - yQ;
 

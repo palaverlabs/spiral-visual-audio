@@ -21,7 +21,7 @@ export const RIAA_GAIN_DB = 20;
 // 100× integer SVG coordinates.
 // Radial precision: 0.01 units → ~14.7-bit linear amplitude resolution (vs ~11.8-bit at 3dp).
 // File size: integer coords average 9–11 chars vs 13–17 for x.xxx,y.yyy → ~25% smaller.
-export const COORD_SCALE = 100;
+export const COORD_SCALE = 1000;
 
 export const DEFAULT_ROUT = 220;
 export const DEFAULT_RIN = 40;

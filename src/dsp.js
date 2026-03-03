@@ -15,7 +15,7 @@ export function muLawExpand(y) {
 
 export function antiAliasFilter(samples, decimationFactor) {
   if (decimationFactor <= 1) return samples;
-  const kernelRadius = Math.min(Math.ceil(decimationFactor * 2), 64);
+  const kernelRadius = Math.min(Math.ceil(decimationFactor * 16), 128);
   const kernelSize = kernelRadius * 2 + 1;
   const kernel = new Float32Array(kernelSize);
   const cutoff = 0.5 / decimationFactor;

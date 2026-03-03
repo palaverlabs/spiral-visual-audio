@@ -394,8 +394,11 @@ class App {
 
         this.grooveSVG = svg;
         this.groovePoints = groovePoints;
-        this.decodedAudio = this.originalAudio;
-        this.decodedAudioR = this.originalAudioR;
+        const decoded = decodeFromSVG(svg, this._geom());
+        this.decodedAudio = decoded.samples;
+        this.decodedAudioR = decoded.samplesR || null;
+        this.sampleRate = decoded.sampleRate;
+        this.duration = decoded.samples.length / decoded.sampleRate;
         this.scrubProgress = 0;
         this.discRotation = 0;
         this.debug(debugMsg);
