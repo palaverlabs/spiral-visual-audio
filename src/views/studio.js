@@ -4,6 +4,7 @@ import { PlaybackManager } from '../playback.js';
 import { SkinManager, SKINS } from '../skin.js';
 import { DEFAULT_ROUT, DEFAULT_RIN, DEFAULT_CX, DEFAULT_CY, TAU, SPIN_SPEED } from '../constants.js';
 import { renderPublishPanel } from '../publish.js';
+import { supabase } from '../supabase.js';
 
 const STUDIO_HTML = `
   <div class="app">
@@ -54,6 +55,7 @@ const STUDIO_HTML = `
 
       <div class="status-line info" id="audioStatus">Ready — drop a file or click the disc</div>
 
+      <div id="libraryWrap"></div>
       <div id="publishWrap"></div>
     </section>
   </div>
@@ -152,6 +154,7 @@ class App {
     this.renderer.setSkin(skin.canvas);
     this._updateSkinButtons(skin);
     this.renderer.drawEmptyDisc(this._geom(), null);
+    this._initLibraryBrowser();
   }
 
   destroy() {
@@ -319,51 +322,143 @@ class App {
     this._setStatus('Loading visual groove...', 'info');
     try {
       const svgText = await file.text();
-      const result = decodeFromSVG(svgText, this._geom());
-
-      this.grooveSVG = svgText;
-      this.decodedAudio = result.samples;
-      this.decodedAudioR = result.samplesR || null;
-      this.sampleRate = result.sampleRate;
-      this.duration = result.samples.length / result.sampleRate;
-      this.spiralTurns = result.turns;
-      this.Rout = result.Rout;
-      this.Rin = result.Rin;
-      this.cx = result.cx;
-      this.cy = result.cy;
-      this.originalAudio = null;
-      this.originalAudioR = null;
-      this.groovePoints = result.groovePoints;
-
-      const chLabel = result.samplesR ? 'Stereo (Visual)' : 'Mono (Visual)';
-      this._setStatus(`Visual groove loaded: ${file.name}`, 'success');
-      this._showAudioInfo({
-        duration: this.duration,
-        sampleRate: result.sampleRate,
-        channels: chLabel,
-        size: `${(file.size / 1024).toFixed(1)} KB`,
-      });
-      this.scrubProgress = 0;
-      this.discRotation = 0;
-      this.renderer.preRenderGroove(this.groovePoints, this._geom());
-      this.renderer.drawDiscWithGroove(0, -1, this._geom());
-      this.renderer.canvas.style.cursor = 'grab';
-      this._enablePlayback();
-      document.getElementById('dropOverlay')?.classList.add('hidden');
-
-      const genBtn = document.getElementById('generateGroove');
-      genBtn.textContent = 'RE-ENC';
-      genBtn.disabled = false;
-
-      this._showPublishPanel();
-
-      this.debug(`Groove loaded: ${result.vertices} vertices, ${result.turns.toFixed(1)} turns, ${this.duration.toFixed(2)}s${result.samplesR ? ' [stereo M/S]' : ''}`);
-      this.debug('Ready for playback from visual groove!');
+      await this._applyGrooveSVG(svgText, file.name, `${(file.size / 1024).toFixed(1)} KB`);
     } catch (error) {
       this.debug(`Failed to load groove: ${error.message}`);
       this._setStatus('Failed to load visual groove file', 'error');
       console.error('Groove loading error:', error);
     }
+  }
+
+  async _applyGrooveSVG(svgText, name = 'groove', sizeStr = '') {
+    const result = decodeFromSVG(svgText, this._geom());
+
+    this.grooveSVG = svgText;
+    this.decodedAudio = result.samples;
+    this.decodedAudioR = result.samplesR || null;
+    this.sampleRate = result.sampleRate;
+    this.duration = result.samples.length / result.sampleRate;
+    this.spiralTurns = result.turns;
+    this.Rout = result.Rout;
+    this.Rin = result.Rin;
+    this.cx = result.cx;
+    this.cy = result.cy;
+    this.originalAudio = null;
+    this.originalAudioR = null;
+    this.groovePoints = result.groovePoints;
+
+    const chLabel = result.samplesR ? 'Stereo (Visual)' : 'Mono (Visual)';
+    this._setStatus(`Groove loaded: ${name}`, 'success');
+    this._showAudioInfo({
+      duration: this.duration,
+      sampleRate: result.sampleRate,
+      channels: chLabel,
+      size: sizeStr,
+    });
+    this.scrubProgress = 0;
+    this.discRotation = 0;
+    this.renderer.preRenderGroove(this.groovePoints, this._geom());
+    this.renderer.drawDiscWithGroove(0, -1, this._geom());
+    this.renderer.canvas.style.cursor = 'grab';
+    this._enablePlayback();
+    document.getElementById('dropOverlay')?.classList.add('hidden');
+
+    const genBtn = document.getElementById('generateGroove');
+    genBtn.textContent = 'RE-ENC';
+    genBtn.disabled = false;
+
+    this._showPublishPanel();
+
+    this.debug(`Groove loaded: ${result.vertices} vertices, ${result.turns.toFixed(1)} turns, ${this.duration.toFixed(2)}s${result.samplesR ? ' [stereo M/S]' : ''}`);
+    this.debug('Ready for playback from visual groove!');
+  }
+
+  async _initLibraryBrowser() {
+    if (!supabase) return;
+    const wrap = document.getElementById('libraryWrap');
+    if (!wrap) return;
+
+    const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: {} }));
+    if (!user) return;
+
+    const [{ data: records }, { data: collected }] = await Promise.all([
+      supabase.from('records')
+        .select('id, title, thumbnail_path, file_path')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(30),
+      supabase.from('collections')
+        .select('records(id, title, thumbnail_path, file_path)')
+        .eq('user_id', user.id)
+        .order('collected_at', { ascending: false })
+        .limit(20),
+    ]);
+
+    const allItems = [
+      ...(records ?? []),
+      ...(collected ?? []).map(c => c.records).filter(Boolean),
+    ];
+
+    if (!allItems.length) return;
+
+    const cards = allItems.map(r => {
+      const thumbUrl = r.thumbnail_path
+        ? supabase.storage.from('records').getPublicUrl(r.thumbnail_path).data.publicUrl
+        : null;
+      const img = thumbUrl
+        ? `<img class="library-mini-img" src="${thumbUrl}" alt="">`
+        : `<div class="library-mini-img library-mini-vinyl"></div>`;
+      const title = String(r.title ?? '').replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
+      );
+      return `<div class="library-mini-card" data-file-path="${r.file_path}" data-title="${title}">${img}<div class="library-mini-title">${title}</div></div>`;
+    }).join('');
+
+    wrap.innerHTML = `
+      <div class="library-browser">
+        <div class="library-browser-toggle" id="libraryBrowserToggle">
+          <span>Library</span>
+          <span class="library-chevron">&#9660;</span>
+        </div>
+        <div class="library-browser-scroll" id="libraryBrowserScroll" hidden>${cards}</div>
+      </div>`;
+
+    document.getElementById('libraryBrowserToggle').addEventListener('click', () => {
+      const scroll = document.getElementById('libraryBrowserScroll');
+      const chevron = wrap.querySelector('.library-chevron');
+      const open = scroll.hasAttribute('hidden');
+      scroll.toggleAttribute('hidden', !open);
+      chevron.textContent = open ? '▲' : '▼';
+    });
+
+    wrap.querySelectorAll('.library-mini-card').forEach(card => {
+      card.addEventListener('click', async () => {
+        const filePath = card.dataset.filePath;
+        const title = card.dataset.title;
+        this._setStatus(`Loading "${title}"...`, 'info');
+        try {
+          const { data: urlData } = supabase.storage.from('records').getPublicUrl(filePath);
+          const resp = await fetch(urlData.publicUrl);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const buf = await resp.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          const isGzip = bytes[0] === 0x1f && bytes[1] === 0x8b;
+          let svgText;
+          if (isGzip) {
+            const ds = new DecompressionStream('gzip');
+            const writer = ds.writable.getWriter();
+            writer.write(bytes);
+            writer.close();
+            svgText = await new Response(ds.readable).text();
+          } else {
+            svgText = new TextDecoder().decode(buf);
+          }
+          await this._applyGrooveSVG(svgText, title);
+        } catch (err) {
+          this._setStatus(`Failed to load: ${err.message}`, 'error');
+        }
+      });
+    });
   }
 
   generateGroove() {

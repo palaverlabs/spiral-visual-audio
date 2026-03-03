@@ -46,6 +46,12 @@ route('/studio', async () => {
   return mountStudio();
 });
 
+route('/library', async () => {
+  const { libraryView } = await import('./views/library.js');
+  await libraryView();
+  updateNav();
+});
+
 route('/auth', async () => {
   const { authView } = await import('./views/auth.js');
   await authView();
