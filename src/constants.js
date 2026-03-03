@@ -4,7 +4,6 @@ export const PREEMPH_COEFF = 0.97; // kept for decoding legacy SVGs (preemph=1 w
 // Target effective sample rate per quality level. N = targetSr * duration, capped at QUALITY_VERTEX_CAP.
 // This keeps audio bandwidth consistent regardless of song length (unlike a flat vertex count).
 export const QUALITY_TARGET_SR = [6000, 8000, 11025, 16000, 44100];
-export const QUALITY_VERTEX_CAP = 2000000;
 export const MIN_PLAYBACK_RATE = 8000;
 export const FADE_LEN_FRACTION = 0.005;
 export const SPIN_SPEED = Math.PI; // TAU * 0.5 rad/s

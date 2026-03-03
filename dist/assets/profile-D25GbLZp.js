@@ -1,4 +1,4 @@
-import{s as a,n as c}from"./index-DFIUfh_8.js";async function l({username:d}){if(document.getElementById("view").innerHTML=`
+import{s as a,n as c}from"./index-CA5ANbvu.js";async function l({username:d}){if(document.getElementById("view").innerHTML=`
     <div class="profile-page">
       <div class="profile-header">
         <div class="profile-avatar"></div>

@@ -1,4 +1,4 @@
-import { TAU, QUALITY_TARGET_SR, QUALITY_VERTEX_CAP, FADE_LEN_FRACTION, ENC_RIAA_CORNER_HZ, RIAA_CORNER_HZ, COORD_SCALE } from './constants.js';
+import { TAU, QUALITY_TARGET_SR, FADE_LEN_FRACTION, ENC_RIAA_CORNER_HZ, RIAA_CORNER_HZ, COORD_SCALE } from './constants.js';
 import { clamp, archBase, muLawCompress, muLawExpand, antiAliasFilter, preEmphasis, deEmphasis, riaaPreEmphasis, riaaDeEmphasis, softLimit, lanczos3Resample, cubicInterpolate } from './dsp.js';
 
 export function encodeToSVG(samples, opts = {}) {
@@ -19,7 +19,7 @@ export function encodeToSVG(samples, opts = {}) {
   const duration = totalSamples / originalSr;
 
   const targetSr = QUALITY_TARGET_SR[quality - 1];
-  const N = Math.min(Math.round(targetSr * duration), QUALITY_VERTEX_CAP, totalSamples);
+  const N = Math.min(Math.round(targetSr * duration), totalSamples);
   const decimationFactor = totalSamples / N;
   const effectiveSr = Math.round(N / duration);
 

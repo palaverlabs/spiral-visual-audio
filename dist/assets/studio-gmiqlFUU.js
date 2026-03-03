@@ -1,4 +1,4 @@
-import{s as p,n as f,_}from"./index-DFIUfh_8.js";import{decodeFromSVG as v,encodeToSVG as E}from"./codec-wAHoJpX3.js";import{Renderer as S}from"./renderer-CPv9XEP9.js";import{PlaybackManager as k}from"./playback-DNePE7k2.js";import{SkinManager as w,SKINS as u}from"./skin-CgR2CiEM.js";import{DEFAULT_ROUT as I,DEFAULT_RIN as R,DEFAULT_CX as B,DEFAULT_CY as L,SPIN_SPEED as y,TAU as m}from"./constants-RWi0zBZ2.js";import"./dsp-BKoDEAXJ.js";function A(h,t,o){h.innerHTML=`
+import{s as p,n as f,_}from"./index-CA5ANbvu.js";import{decodeFromSVG as v,encodeToSVG as E}from"./codec-BojUtfmC.js";import{Renderer as S}from"./renderer-B0CEpKcw.js";import{PlaybackManager as k}from"./playback-BmsgTywu.js";import{SkinManager as w,SKINS as u}from"./skin-CgR2CiEM.js";import{DEFAULT_ROUT as I,DEFAULT_RIN as R,DEFAULT_CX as B,DEFAULT_CY as L,SPIN_SPEED as y,TAU as m}from"./constants-DLOse1cr.js";import"./dsp-C2k8GsBn.js";function A(h,t,o){h.innerHTML=`
     <div class="publish-panel">
       <div class="publish-toggle" id="publishToggle">
         <span>Publish to Collection</span>
