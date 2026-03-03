@@ -1,4 +1,4 @@
-import{s as a,n as c}from"./index-BtUnXu5b.js";async function o(){if(document.getElementById("view").innerHTML=`
+import{s as a,n as c}from"./index-DFIUfh_8.js";async function o(){if(document.getElementById("view").innerHTML=`
     <div class="feed-page">
       <h2 class="feed-title">Recent Records</h2>
       <div class="feed-grid" id="feedGrid">
