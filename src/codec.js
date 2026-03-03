@@ -1,5 +1,5 @@
 import { TAU, QUALITY_TARGET_SR, FADE_LEN_FRACTION, ENC_RIAA_CORNER_HZ, RIAA_CORNER_HZ, COORD_SCALE } from './constants.js';
-import { clamp, archBase, muLawCompress, muLawExpand, antiAliasFilter, preEmphasis, deEmphasis, riaaPreEmphasis, riaaDeEmphasis, softLimit, lanczos3Resample, cubicInterpolate } from './dsp.js';
+import { clamp, archBase, muLawExpand, antiAliasFilter, preEmphasis, deEmphasis, riaaPreEmphasis, riaaDeEmphasis, softLimit, lanczos3Resample, cubicInterpolate } from './dsp.js';
 
 export function encodeToSVG(samples, opts = {}) {
   const {
@@ -66,14 +66,6 @@ export function encodeToSVG(samples, opts = {}) {
     }
   }
 
-  // Mu-law compress
-  const cMid = new Float32Array(N);
-  const cSide = isStereo ? new Float32Array(N) : null;
-  for (let i = 0; i < N; i++) {
-    cMid[i] = muLawCompress(emphMid[i]);
-    if (cSide) cSide[i] = muLawCompress(emphSide[i]);
-  }
-
   const drPerTurn = (Rout - Rin) / Math.max(1, turns);
   const kMax = 0.45 * drPerTurn;
   const k = Math.min(sensitivity, kMax);
@@ -105,12 +97,12 @@ export function encodeToSVG(samples, opts = {}) {
 
     let xRaw, yRaw;
     if (isStereo) {
-      const midVal = clamp(cMid[i], -1, 1);
-      const sideVal = clamp(cSide[i], -1, 1);
+      const midVal = clamp(emphMid[i], -1, 1);
+      const sideVal = clamp(emphSide[i], -1, 1);
       xRaw = cx_s + (rBase_s + k_s * midVal) * cosT - k_s * sideVal * sinT + xErr;
       yRaw = cy_s + (rBase_s + k_s * midVal) * sinT + k_s * sideVal * cosT + yErr;
     } else {
-      const r_s = rBase_s + k_s * clamp(cMid[i], -1, 1);
+      const r_s = rBase_s + k_s * clamp(emphMid[i], -1, 1);
       xRaw = cx_s + r_s * cosT + xErr;
       yRaw = cy_s + r_s * sinT + yErr;
     }
@@ -132,8 +124,8 @@ export function encodeToSVG(samples, opts = {}) {
   const ptsPerTurn = Math.round(N / turns);
   const sizeMB = (N * 10 / 1024 / 1024).toFixed(1);
   const pipelineStr = decimationFactor > 1
-    ? `anti-alias → ${decimationFactor.toFixed(1)}x decimate → soft-limit → RIAA@${ENC_RIAA_CORNER_HZ}Hz → mu-law → err-diffuse`
-    : `soft-limit → RIAA@${ENC_RIAA_CORNER_HZ}Hz → mu-law → err-diffuse`;
+    ? `anti-alias → ${decimationFactor.toFixed(1)}x decimate → soft-limit → RIAA@${ENC_RIAA_CORNER_HZ}Hz → err-diffuse`
+    : `soft-limit → RIAA@${ENC_RIAA_CORNER_HZ}Hz → err-diffuse`;
 
   const debugMsg = `Encoded ${totalSamples} samples → ${N} vertices [${pipelineStr}] (~${ptsPerTurn} pts/turn, ${turns} turns, k=${k.toFixed(4)}, sr=${effectiveSr}Hz, ~${sizeMB} MB)${isStereo ? ' [STEREO M/S]' : ''}`;
 
@@ -148,7 +140,7 @@ export function encodeToSVG(samples, opts = {}) {
   <circle cx="${cx_s}" cy="${cy_s}" r="${outerR_s}" fill="url(#discGrad)" stroke="#233242" stroke-width="${2 * s}"/>
   <circle cx="${cx_s}" cy="${cy_s}" r="${innerR_s}" fill="#0a0d11" stroke="#22303b" stroke-width="${2 * s}"/>
   <path id="audioGroove" fill="none" stroke="#5ad8cf" stroke-width="${0.8 * s}" stroke-linecap="round" d="M ${pathParts[0]} l ${pathParts.slice(1).join(' ')}" />
-  <desc>Geometry-only spiral audio. sr=${effectiveSr}; Rout=${Rout}; Rin=${Rin}; turns=${turns}; k=${k.toFixed(6)}; originalLength=${N}; mulaw=1; riaa=1; riaaHz=${ENC_RIAA_CORNER_HZ}; scale=${s}${stereoFlag}.</desc>
+  <desc>Geometry-only spiral audio. sr=${effectiveSr}; Rout=${Rout}; Rin=${Rin}; turns=${turns}; k=${k.toFixed(6)}; originalLength=${N}; riaa=1; riaaHz=${ENC_RIAA_CORNER_HZ}; scale=${s}${stereoFlag}.</desc>
 </svg>`;
 
   return { svg, groovePoints, debugMsg };
