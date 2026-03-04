@@ -6,12 +6,19 @@
   <title>Spiral Records</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <script type="module" crossorigin src="/assets/index-OVD8Z4-M.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-YvQbhBew.css">
+  <script type="module" crossorigin src="/assets/index-6dTybhvt.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-GhwZ6Fk7.css">
 </head>
 <body>
   <nav class="site-nav">
-    <a href="/" class="nav-link" data-route="/">Feed</a>
+    <button class="nav-hamburger" id="navHamburger" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="nav-left">
+      <a href="/" class="nav-link" data-route="/">Feed</a>
+      <a href="/library" class="nav-link" data-route="/library">Library</a>
+      <a href="/about" class="nav-link" data-route="/about">About</a>
+    </div>
     <a href="/studio" class="nav-link nav-logo-link" data-route="/studio">
       <img src="/spiral-audio-logo text.png" alt="Spiral Records" class="logo">
     </a>
@@ -19,6 +26,12 @@
       <a href="/auth" class="nav-link" data-route="/auth" id="navAuthLink">Sign In</a>
     </div>
   </nav>
+  <div class="nav-drawer" id="navDrawer">
+    <a href="/" class="nav-drawer-link" data-route="/">Feed</a>
+    <a href="/library" class="nav-drawer-link" data-route="/library">Library</a>
+    <a href="/about" class="nav-drawer-link" data-route="/about">About</a>
+    <a href="/auth" class="nav-drawer-link" data-route="/auth" id="navAuthLinkMobile">Sign In</a>
+  </div>
   <main id="view"></main>
 </body>
 </html>
