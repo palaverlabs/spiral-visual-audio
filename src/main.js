@@ -76,6 +76,11 @@ route('/r/:id', async ({ id }) => {
   return recordView({ id });
 });
 
+route('/about', async () => {
+  const { aboutView } = await import('./views/about.js');
+  aboutView();
+});
+
 route('/u/:username', async ({ username }) => {
   const { profileView } = await import('./views/profile.js');
   await profileView({ username });
