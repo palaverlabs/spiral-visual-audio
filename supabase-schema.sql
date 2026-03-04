@@ -106,6 +106,12 @@ BEGIN
 END;
 $$;
 
+-- Atomic play counter (bypasses RLS so any visitor can increment)
+CREATE OR REPLACE FUNCTION public.increment_plays(record_id uuid)
+RETURNS void LANGUAGE sql SECURITY DEFINER AS $$
+  UPDATE public.records SET plays = plays + 1 WHERE id = record_id;
+$$;
+
 -- Custom cover art, description, album, genre
 ALTER TABLE public.records ADD COLUMN IF NOT EXISTS cover_path text;
 ALTER TABLE public.records ADD COLUMN IF NOT EXISTS description text;

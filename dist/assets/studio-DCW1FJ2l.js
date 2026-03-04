@@ -1,4 +1,4 @@
-import{s as h,n as P,_ as F}from"./index-Dwbp2X2v.js";import{decodeFromSVG as k,encodeToSVG as $}from"./codec-DD8oa5IT.js";import{Renderer as D}from"./renderer-DFs9JXLI.js";import{PlaybackManager as G}from"./playback-DlZmY9aO.js";import{SkinManager as C,SKINS as g}from"./skin-CgR2CiEM.js";import{DEFAULT_ROUT as V,DEFAULT_RIN as M,DEFAULT_CX as U,DEFAULT_CY as q,SPIN_SPEED as R,TAU as B}from"./constants-DbjzoO0c.js";import"./dsp-Cfs7oYeH.js";function W(w,e,a,i){w.innerHTML=`
+import{s as h,n as P,_ as F}from"./index-bkAPpy9F.js";import{decodeFromSVG as k,encodeToSVG as $}from"./codec-DD8oa5IT.js";import{Renderer as D}from"./renderer-DFs9JXLI.js";import{PlaybackManager as G}from"./playback-DlZmY9aO.js";import{SkinManager as C,SKINS as g}from"./skin-CgR2CiEM.js";import{DEFAULT_ROUT as V,DEFAULT_RIN as M,DEFAULT_CX as U,DEFAULT_CY as q,SPIN_SPEED as R,TAU as B}from"./constants-DbjzoO0c.js";import"./dsp-Cfs7oYeH.js";function W(w,e,a,i){w.innerHTML=`
     <div class="publish-panel">
       <div class="publish-toggle" id="publishToggle">
         <span>Publish to Collection</span>

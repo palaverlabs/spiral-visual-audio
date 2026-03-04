@@ -1,4 +1,4 @@
-import{s,n as c}from"./index-Dwbp2X2v.js";async function l(){if(document.getElementById("view").innerHTML=`
+import{s,n as c}from"./index-bkAPpy9F.js";async function l(){if(document.getElementById("view").innerHTML=`
     <div class="auth-page">
       <div class="auth-tabs">
         <button class="auth-tab active" id="tabSignIn">Sign in</button>

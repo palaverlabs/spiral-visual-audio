@@ -281,8 +281,8 @@ export async function recordView({ id }) {
       navigator.mediaSession.setActionHandler('pause', () => btn.click());
     }
 
-    // Increment play count (fire-and-forget)
-    supabase.from('records').update({ plays: (record.plays ?? 0) + 1 }).eq('id', id);
+    // Increment play count atomically (SECURITY DEFINER bypasses RLS so any visitor counts)
+    supabase.rpc('increment_plays', { record_id: id });
 
     return () => {
       playback.stop();
