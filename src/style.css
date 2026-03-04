@@ -797,6 +797,23 @@ input[type="file"] { display: none; }
   border-radius: 50%;
 }
 
+.record-cover-art {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  display: block;
+}
+
+.record-description {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-muted);
+  margin: 12px 0 0;
+  white-space: pre-wrap;
+}
+
 .record-info { width: 100%; }
 
 .record-info h1 {
@@ -988,7 +1005,64 @@ input[type="file"] { display: none; }
   gap: 10px;
 }
 
-.publish-form input[type="text"] {
+.publish-cover-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.cover-upload-zone {
+  width: 96px;
+  height: 96px;
+  flex-shrink: 0;
+  border: 1px dashed var(--panel-border);
+  border-radius: 8px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.cover-upload-zone:hover { border-color: var(--accent); }
+
+.cover-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.cover-plus {
+  font-size: 20px;
+  color: var(--text-muted);
+  line-height: 1;
+}
+.cover-hint {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.cover-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.publish-fields {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.publish-form input[type="text"],
+.publish-form textarea {
   width: 100%;
   background: rgba(255,255,255,0.05);
   border: 1px solid var(--panel-border);
@@ -999,9 +1073,17 @@ input[type="file"] { display: none; }
   outline: none;
   font-family: var(--font-ui);
   transition: border-color 0.15s;
+  box-sizing: border-box;
 }
 
-.publish-form input[type="text"]:focus { border-color: var(--accent); }
+.publish-form textarea {
+  resize: vertical;
+  min-height: 72px;
+  line-height: 1.5;
+}
+
+.publish-form input[type="text"]:focus,
+.publish-form textarea:focus { border-color: var(--accent); }
 
 .publish-public-row {
   display: flex;

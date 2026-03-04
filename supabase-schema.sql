@@ -106,6 +106,12 @@ BEGIN
 END;
 $$;
 
+-- Custom cover art, description, album, genre
+ALTER TABLE public.records ADD COLUMN IF NOT EXISTS cover_path text;
+ALTER TABLE public.records ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE public.records ADD COLUMN IF NOT EXISTS album text;
+ALTER TABLE public.records ADD COLUMN IF NOT EXISTS genre text;
+
 -- Storage bucket: create a public bucket named "records" in the Supabase dashboard,
 -- then add this policy so authenticated users can upload to their own folder:
 --

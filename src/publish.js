@@ -9,8 +9,23 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
         <span class="publish-chevron">&#9660;</span>
       </div>
       <div class="publish-form" id="publishForm" hidden>
-        <input type="text" id="publishTitle" placeholder="Title (required)" maxlength="100">
-        <input type="text" id="publishArtist" placeholder="Artist / tag (optional)" maxlength="100">
+        <div class="publish-cover-row">
+          <div class="cover-upload-zone" id="coverZone" title="Click to upload cover art">
+            <input type="file" id="coverInput" accept="image/*" hidden>
+            <img id="coverPreview" class="cover-preview" hidden>
+            <div class="cover-placeholder" id="coverPlaceholder">
+              <span class="cover-plus">+</span>
+              <span class="cover-hint">Cover Art</span>
+            </div>
+          </div>
+          <div class="publish-fields">
+            <input type="text" id="publishTitle" placeholder="Title (required)" maxlength="100">
+            <input type="text" id="publishArtist" placeholder="Artist" maxlength="100">
+            <input type="text" id="publishAlbum" placeholder="Album" maxlength="100">
+            <input type="text" id="publishGenre" placeholder="Genre" maxlength="60">
+          </div>
+        </div>
+        <textarea id="publishDescription" placeholder="Description (optional)" maxlength="1000" rows="3"></textarea>
         <input type="number" id="publishEdition" placeholder="Edition size (leave blank for unlimited)" min="1" step="1">
         <label class="publish-public-row">
           <input type="checkbox" id="publishPublic" checked>
@@ -20,6 +35,24 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
         <button class="action-btn" id="publishBtn">PUBLISH</button>
       </div>
     </div>`;
+
+  // Cover art picker
+  const zone = document.getElementById('coverZone');
+  const coverInput = document.getElementById('coverInput');
+  const coverPreview = document.getElementById('coverPreview');
+  const coverPlaceholder = document.getElementById('coverPlaceholder');
+  let coverFile = null;
+
+  zone.addEventListener('click', () => coverInput.click());
+  coverInput.addEventListener('change', () => {
+    const file = coverInput.files[0];
+    if (!file) return;
+    coverFile = file;
+    const url = URL.createObjectURL(file);
+    coverPreview.src = url;
+    coverPreview.hidden = false;
+    coverPlaceholder.hidden = true;
+  });
 
   document.getElementById('publishToggle').addEventListener('click', () => {
     const form = document.getElementById('publishForm');
@@ -69,8 +102,19 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
         .upload(filePath, blob, { contentType: 'image/svg+xml' });
       if (uploadError) throw uploadError;
 
+      // Custom cover art
+      let coverPath = null;
+      if (coverFile) {
+        try {
+          const ext = coverFile.name.split('.').pop().toLowerCase() || 'jpg';
+          coverPath = `${user.id}/${recordId}_cover.${ext}`;
+          await supabase.storage.from('records').upload(coverPath, coverFile, { contentType: coverFile.type });
+        } catch (_) { coverPath = null; }
+      }
+
+      // Auto-generated thumbnail (fallback if no custom cover)
       let thumbPath = null;
-      if (getThumbBlob) {
+      if (!coverPath && getThumbBlob) {
         try {
           const thumbBlob = await getThumbBlob();
           thumbPath = `${user.id}/${recordId}_thumb.jpg`;
@@ -84,6 +128,9 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
         user_id: user.id,
         title,
         artist: document.getElementById('publishArtist').value.trim() || null,
+        album: document.getElementById('publishAlbum').value.trim() || null,
+        genre: document.getElementById('publishGenre').value.trim() || null,
+        description: document.getElementById('publishDescription').value.trim() || null,
         duration: meta?.duration ?? null,
         quality: meta?.quality ?? null,
         turns: meta?.turns ?? null,
@@ -93,6 +140,7 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
         file_size: blob.size,
         is_public: document.getElementById('publishPublic').checked,
         edition_size: parseInt(document.getElementById('publishEdition').value) || null,
+        cover_path: coverPath,
         thumbnail_path: thumbPath,
       });
       if (insertError) throw insertError;

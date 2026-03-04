@@ -40,20 +40,39 @@ export async function recordView({ id }) {
 
   const { data: record, error } = await supabase
     .from('records')
-    .select('*, users(username)')
+    .select('*, users(username), cover_path, description, album, genre')
     .eq('id', id)
     .single();
 
   if (error || !record) { setStatus('Record not found.', 'error'); return; }
 
   const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+  // Cover art
+  if (record.cover_path) {
+    const coverUrl = supabase.storage.from('records').getPublicUrl(record.cover_path).data.publicUrl;
+    const coverEl = document.createElement('img');
+    coverEl.className = 'record-cover-art';
+    coverEl.src = coverUrl;
+    coverEl.alt = record.title;
+    document.getElementById('recordTitle').before(coverEl);
+  }
+
   document.getElementById('recordTitle').textContent = record.title;
-  document.getElementById('recordArtist').textContent = record.artist || '';
+  document.getElementById('recordArtist').textContent = [record.artist, record.album].filter(Boolean).join(' — ');
   document.getElementById('recordMeta').textContent = [
     record.users?.username ? `@${record.users.username}` : '',
+    record.genre || '',
     record.duration ? fmt(record.duration) : '',
     `${record.plays ?? 0} plays`,
   ].filter(Boolean).join(' · ');
+
+  if (record.description) {
+    const descEl = document.createElement('p');
+    descEl.className = 'record-description';
+    descEl.textContent = record.description;
+    document.getElementById('recordMeta').after(descEl);
+  }
 
   // Show delete button if current user owns this record
   const { data: { user } = {} } = await supabase.auth.getUser().catch(() => ({ data: {} }));
