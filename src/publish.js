@@ -109,13 +109,13 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
         .upload(filePath, blob, { contentType: 'image/svg+xml' });
       if (uploadError) throw uploadError;
 
-      // Custom cover art
+      // Custom cover art — resize to 600x600 max before upload
       let coverPath = null;
       if (coverFile) {
         try {
-          const ext = coverFile.name.split('.').pop().toLowerCase() || 'jpg';
-          coverPath = `${user.id}/${recordId}_cover.${ext}`;
-          await supabase.storage.from('records').upload(coverPath, coverFile, { contentType: coverFile.type });
+          const resized = await resizeImage(coverFile, 600);
+          coverPath = `${user.id}/${recordId}_cover.jpg`;
+          await supabase.storage.from('records').upload(coverPath, resized, { contentType: 'image/jpeg' });
         } catch (_) { coverPath = null; }
       }
 
@@ -159,5 +159,25 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
       btn.disabled = false;
       btn.textContent = 'PUBLISH';
     }
+  });
+}
+
+function resizeImage(file, maxSize) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error('resize failed')), 'image/jpeg', 0.85);
+    };
+    img.onerror = reject;
+    img.src = url;
   });
 }

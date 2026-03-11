@@ -18,7 +18,7 @@ export async function feedView() {
 
   const { data, error } = await supabase
     .from('records')
-    .select('id, title, artist, duration, plays, created_at, thumbnail_path, users(username)')
+    .select('id, title, artist, duration, plays, created_at, cover_path, thumbnail_path, users(username)')
     .eq('is_public', true)
     .order('created_at', { ascending: false })
     .limit(24);
@@ -35,7 +35,7 @@ export async function feedView() {
   }
 
   grid.innerHTML = data.map(r => {
-    const imagePath = r.thumbnail_path;
+    const imagePath = r.cover_path || r.thumbnail_path;
     const thumbUrl = imagePath
       ? supabase.storage.from('records').getPublicUrl(imagePath).data.publicUrl
       : null;

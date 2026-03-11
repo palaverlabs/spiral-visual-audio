@@ -23,11 +23,11 @@ export async function libraryView() {
 
   const [{ data: records }, { data: collected }] = await Promise.all([
     supabase.from('records')
-      .select('id, title, artist, duration, plays, created_at, thumbnail_path, is_public')
+      .select('id, title, artist, duration, plays, created_at, cover_path, thumbnail_path, is_public')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false }),
     supabase.from('collections')
-      .select('edition_number, collected_at, records(id, title, artist, plays, edition_size, thumbnail_path)')
+      .select('edition_number, collected_at, records(id, title, artist, plays, edition_size, cover_path, thumbnail_path)')
       .eq('user_id', user.id)
       .order('collected_at', { ascending: false }),
   ]);
@@ -55,8 +55,9 @@ export async function libraryView() {
 }
 
 function cardHtml(r, badge) {
-  const thumbUrl = r.thumbnail_path
-    ? supabase.storage.from('records').getPublicUrl(r.thumbnail_path).data.publicUrl
+  const imgPath = r.cover_path || r.thumbnail_path;
+  const thumbUrl = imgPath
+    ? supabase.storage.from('records').getPublicUrl(imgPath).data.publicUrl
     : null;
   const vinyl = thumbUrl
     ? `<img class="record-card-vinyl" src="${thumbUrl}" alt="">`
