@@ -20,13 +20,13 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
           </div>
           <div class="publish-fields">
             <input type="text" id="publishTitle" placeholder="Title (required)" maxlength="100">
-            <input type="text" id="publishArtist" placeholder="Artist" maxlength="100">
-            <input type="text" id="publishAlbum" placeholder="Album" maxlength="100">
-            <input type="text" id="publishGenre" placeholder="Genre" maxlength="60">
+            <input type="text" id="publishArtist" placeholder="Artist (required)" maxlength="100">
+            <input type="text" id="publishAlbum" placeholder="Album (optional)" maxlength="100">
+            <input type="text" id="publishGenre" placeholder="Genre (optional)" maxlength="60">
           </div>
         </div>
         <textarea id="publishDescription" placeholder="Description (optional)" maxlength="1000" rows="3"></textarea>
-        <input type="number" id="publishEdition" placeholder="Edition size (leave blank for unlimited)" min="1" step="1">
+        <input type="number" id="publishEdition" placeholder="Edition size (required)" min="1" step="1">
         <label class="publish-public-row">
           <input type="checkbox" id="publishPublic" checked>
           <span>Public</span>
@@ -76,6 +76,13 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
 
     const title = document.getElementById('publishTitle').value.trim();
     if (!title) { setStatus('Title is required.', 'error'); return; }
+
+    const artist = document.getElementById('publishArtist').value.trim();
+    if (!artist) { setStatus('Artist is required.', 'error'); return; }
+
+    const editionRaw = document.getElementById('publishEdition').value;
+    const editionSize = parseInt(editionRaw);
+    if (!editionRaw || isNaN(editionSize) || editionSize < 1) { setStatus('Edition size is required.', 'error'); return; }
 
     const svg = getGrooveSVG();
     if (!svg) { setStatus('Generate a groove first.', 'error'); return; }
@@ -127,7 +134,7 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
         id: recordId,
         user_id: user.id,
         title,
-        artist: document.getElementById('publishArtist').value.trim() || null,
+        artist,
         album: document.getElementById('publishAlbum').value.trim() || null,
         genre: document.getElementById('publishGenre').value.trim() || null,
         description: document.getElementById('publishDescription').value.trim() || null,
@@ -139,7 +146,7 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
         file_path: filePath,
         file_size: blob.size,
         is_public: document.getElementById('publishPublic').checked,
-        edition_size: parseInt(document.getElementById('publishEdition').value) || null,
+        edition_size: editionSize,
         cover_path: coverPath,
         thumbnail_path: thumbPath,
       });

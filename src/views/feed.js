@@ -18,19 +18,24 @@ export async function feedView() {
 
   const { data, error } = await supabase
     .from('records')
-    .select('id, title, artist, duration, plays, created_at, cover_path, thumbnail_path, users(username)')
+    .select('id, title, artist, duration, plays, created_at, thumbnail_path, users(username)')
     .eq('is_public', true)
     .order('created_at', { ascending: false })
     .limit(24);
 
   const grid = document.getElementById('feedGrid');
-  if (error || !data?.length) {
+  if (error) {
+    console.error('Feed query error:', error);
+    grid.innerHTML = `<p class="feed-empty">Failed to load records: ${error.message}</p>`;
+    return;
+  }
+  if (!data?.length) {
     grid.innerHTML = '<p class="feed-empty">No records yet. Be the first to publish one from the studio!</p>';
     return;
   }
 
   grid.innerHTML = data.map(r => {
-    const imagePath = r.cover_path || r.thumbnail_path;
+    const imagePath = r.thumbnail_path;
     const thumbUrl = imagePath
       ? supabase.storage.from('records').getPublicUrl(imagePath).data.publicUrl
       : null;
