@@ -567,16 +567,25 @@ class App {
     this._lastFrameTime = performance.now();
   }
 
+  _downloadName(ext) {
+    const artist = document.getElementById('publishArtist')?.value.trim();
+    const title = document.getElementById('publishTitle')?.value.trim();
+    const slug = s => s.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '');
+    if (artist && title) return `${slug(artist)}-${slug(title)}.${ext}`;
+    if (title) return `${slug(title)}.${ext}`;
+    return `visual_audio_groove.${ext}`;
+  }
+
   downloadSVG() {
     if (!this.grooveSVG) return;
-    this._triggerDownload(new Blob([this.grooveSVG], { type: 'image/svg+xml' }), 'visual_audio_groove.svg');
+    this._triggerDownload(new Blob([this.grooveSVG], { type: 'image/svg+xml' }), this._downloadName('svg'));
     this.debug('Visual groove SVG downloaded');
   }
 
   downloadAudio() {
     const audio = this._getPlaybackAudio();
     if (!audio) return;
-    this._triggerDownload(this.playback.createWAVBlob(audio), 'reconstructed_audio.wav');
+    this._triggerDownload(this.playback.createWAVBlob(audio), this._downloadName('wav'));
     this.debug(`Reconstructed audio downloaded${audio.right ? ' [stereo]' : ''}`);
   }
 
