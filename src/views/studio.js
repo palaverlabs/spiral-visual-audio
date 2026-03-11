@@ -738,18 +738,7 @@ class App {
     return `${mins}:${secs}`;
   }
 
-  async _triggerDownload(blob, filename) {
-    if (navigator.canShare) {
-      const file = new File([blob], filename, { type: blob.type });
-      if (navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file], title: filename });
-          return;
-        } catch (err) {
-          if (err.name === 'AbortError') return;
-        }
-      }
-    }
+  _triggerDownload(blob, filename) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
