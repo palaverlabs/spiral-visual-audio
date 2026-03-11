@@ -798,8 +798,8 @@ input[type="file"] { display: none; }
 }
 
 .record-cover-art {
-  width: 100%;
-  aspect-ratio: 1;
+  width: 180px;
+  height: 180px;
   object-fit: cover;
   border-radius: 10px;
   margin-bottom: 20px;
