@@ -2,10 +2,11 @@ import { MIN_PLAYBACK_RATE, SPIN_SPEED } from './constants.js';
 import { cubicInterpolate } from './dsp.js';
 
 export class PlaybackManager {
-  constructor({ onFrame, onStop, onDebug }) {
+  constructor({ onFrame, onStop, onDebug, onEnd }) {
     this.onFrame = onFrame;
     this.onStop = onStop;
     this.onDebug = onDebug;
+    this.onEnd = onEnd;
     this.isPlaying = false;
     this.animationId = null;
     this._ctx = null;          // persistent — never closed after creation
@@ -87,6 +88,7 @@ export class PlaybackManager {
             this._amplitude = 0.06 * raw + 0.94 * this._amplitude;
           }
         } else if (data.type === 'ended') {
+          this.onEnd?.();
           this.stop();
         }
       };

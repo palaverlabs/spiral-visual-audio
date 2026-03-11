@@ -31,22 +31,28 @@ export class Renderer {
       return;
     }
 
-    const scale = W / 520;
-    const cxs = cx * scale, cys = cy * scale;
+    const baseScale = W / 520;
+    const fs = this.skin.frameScale ?? 1.0;
+    const scale = baseScale * fs;
+    const cxs = cx * baseScale, cys = cy * baseScale;
     const Routs = (Rout + 8) * scale;
     const Rins = Math.max(12, Rin - 8) * scale;
     const labelR = 45 * scale;
 
     ctx.clearRect(0, 0, W, W);
+    if (this.skin.frame === 'alien') this._drawAlienHeadBg(ctx, W, cxs, cys, Routs, scale);
     this._drawDiscBody(ctx, W, scale, cxs, cys, Routs, Rins);
     this._drawLabel(ctx, scale, cxs, cys, labelR, false);
     this._drawSheen(ctx, W, cxs, cys, Routs, scale);
+    if (this.skin.frame === 'alien') this._drawAlienVisor(ctx, W, cxs, cys, Routs, scale);
   }
 
   preRenderGroove(groovePoints, { cx = 260, cy = 260 } = {}) {
     const { canvas } = this;
     const W = canvas.width;
-    const scale = W / 520;
+    const baseScale = W / 520;
+    const fs = this.skin.frameScale ?? 1.0;
+    const scale = baseScale * fs;
     const points = groovePoints;
     const N = points.length / 2;
     if (N === 0) return;
@@ -55,7 +61,10 @@ export class Renderer {
     offscreen.width = W;
     offscreen.height = W;
     const ctx = offscreen.getContext('2d');
-    const cxs = cx * scale, cys = cy * scale;
+    // Centre stays fixed at the base-scale canvas position regardless of frameScale.
+    const cxs = cx * baseScale, cys = cy * baseScale;
+    const px = x => cxs + (x - cx) * scale;
+    const py = y => cys + (y - cy) * scale;
     const g = this.skin.groove;
 
     // Decimate for rendering — cap at 200k drawn segments regardless of point count.
@@ -67,9 +76,9 @@ export class Renderer {
     ctx.lineJoin = 'round';
     ctx.strokeStyle = g.base;
     ctx.beginPath();
-    ctx.moveTo(points[0] * scale, points[1] * scale);
+    ctx.moveTo(px(points[0]), py(points[1]));
     for (let i = step; i < N; i += step) {
-      ctx.lineTo(points[i * 2] * scale, points[i * 2 + 1] * scale);
+      ctx.lineTo(px(points[i * 2]), py(points[i * 2 + 1]));
     }
     ctx.stroke();
 
@@ -93,9 +102,9 @@ export class Renderer {
 
       const end = Math.min(start + chunkPts + 1, N);
       ctx.beginPath();
-      ctx.moveTo(points[start * 2] * scale, points[start * 2 + 1] * scale);
+      ctx.moveTo(px(points[start * 2]), py(points[start * 2 + 1]));
       for (let j = start + step; j < end; j += step) {
-        ctx.lineTo(points[j * 2] * scale, points[j * 2 + 1] * scale);
+        ctx.lineTo(px(points[j * 2]), py(points[j * 2 + 1]));
       }
       ctx.strokeStyle = `hsla(${shiftedHue}, 85%, 68%, 0.28)`;
       ctx.stroke();
@@ -107,9 +116,9 @@ export class Renderer {
     ctx.lineWidth = 0.3 * scale;
     ctx.strokeStyle = g.glowCore;
     ctx.beginPath();
-    ctx.moveTo(points[0] * scale, points[1] * scale);
+    ctx.moveTo(px(points[0]), py(points[1]));
     for (let i = step; i < N; i += step) {
-      ctx.lineTo(points[i * 2] * scale, points[i * 2 + 1] * scale);
+      ctx.lineTo(px(points[i * 2]), py(points[i * 2 + 1]));
     }
     ctx.stroke();
     ctx.shadowBlur = 0;
@@ -126,13 +135,16 @@ export class Renderer {
       this._drawSpectrumEQ(ctx, W, freqData);
       return;
     }
-    const scale = W / 520;
-    const cxs = cx * scale, cys = cy * scale;
+    const baseScale = W / 520;
+    const fs = this.skin.frameScale ?? 1.0;
+    const scale = baseScale * fs;
+    const cxs = cx * baseScale, cys = cy * baseScale;
     const Routs = (Rout + 8) * scale;
     const Rins = Math.max(12, Rin - 8) * scale;
     const labelR = 45 * scale;
 
     ctx.clearRect(0, 0, W, W);
+    if (this.skin.frame === 'alien') this._drawAlienHeadBg(ctx, W, cxs, cys, Routs, scale);
 
     // --- Rotating disc body + groove ---
     ctx.save();
@@ -251,6 +263,8 @@ export class Renderer {
 
       ctx.restore();
     }
+
+    if (this.skin.frame === 'alien') this._drawAlienVisor(ctx, W, cxs, cys, Routs, scale);
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────
@@ -595,6 +609,145 @@ export class Renderer {
         ctx.fillRect(bx, sy, netBarW, segH - segGap);
       }
     }
+  }
+
+  _drawAlienHeadBg(ctx, W, cxs, cys, Routs, scale) {
+    const headR = W * 0.492;
+
+    // Skull body
+    const headGrad = ctx.createRadialGradient(cxs, cys - W * 0.04, W * 0.08, cxs, cys, headR);
+    headGrad.addColorStop(0,   '#001800');
+    headGrad.addColorStop(0.5, '#000b00');
+    headGrad.addColorStop(1,   '#000000');
+    ctx.beginPath();
+    ctx.ellipse(cxs, cys, headR, headR * 1.04, 0, 0, TAU);
+    ctx.fillStyle = headGrad;
+    ctx.fill();
+
+    // Skull outline glow
+    ctx.shadowColor = '#39ff14';
+    ctx.shadowBlur = 10 * scale;
+    ctx.beginPath();
+    ctx.ellipse(cxs, cys, headR - scale, headR * 1.04 - scale, 0, 0, TAU);
+    ctx.strokeStyle = 'rgba(57,255,20,0.45)';
+    ctx.lineWidth = 1.5 * scale;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Circuit traces radiating from disc edge to skull edge
+    const numTraces = 16;
+    for (let i = 0; i < numTraces; i++) {
+      const angle = (i / numTraces) * TAU;
+      const x1 = cxs + (Routs + 10 * scale) * Math.cos(angle);
+      const y1 = cys + (Routs + 10 * scale) * Math.sin(angle);
+      const x2 = cxs + headR * 0.97 * Math.cos(angle);
+      const y2 = cys + headR * 0.97 * Math.sin(angle);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.strokeStyle = i % 4 === 0 ? 'rgba(57,255,20,0.18)' : 'rgba(57,255,20,0.07)';
+      ctx.lineWidth = (i % 4 === 0 ? 1.2 : 0.6) * scale;
+      ctx.stroke();
+    }
+
+    // Antenna nubs at top
+    const antY = cys - headR * 1.04 + 10 * scale;
+    for (const dx of [-28 * scale, 28 * scale]) {
+      // Stem
+      ctx.beginPath();
+      ctx.moveTo(cxs + dx, antY + 20 * scale);
+      ctx.lineTo(cxs + dx * 0.55, antY + 55 * scale);
+      ctx.strokeStyle = 'rgba(57,255,20,0.55)';
+      ctx.lineWidth = 1.8 * scale;
+      ctx.stroke();
+      // Tip dot
+      ctx.shadowColor = '#39ff14';
+      ctx.shadowBlur = 8 * scale;
+      ctx.beginPath();
+      ctx.arc(cxs + dx, antY + 14 * scale, 4 * scale, 0, TAU);
+      ctx.fillStyle = '#39ff14';
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // Jaw / chin arc at bottom
+    ctx.beginPath();
+    ctx.arc(cxs, cys, headR * 0.80, Math.PI * 0.72, Math.PI * 0.28, false);
+    ctx.strokeStyle = 'rgba(57,255,20,0.12)';
+    ctx.lineWidth = 1 * scale;
+    ctx.stroke();
+  }
+
+  _drawAlienVisor(ctx, W, cxs, cys, Routs, scale) {
+    const bezelR = Routs + 8 * scale;
+    const fontUI = getComputedStyle(document.documentElement).getPropertyValue('--font-ui').trim() || 'monospace';
+
+    // Outer glow ring
+    ctx.shadowColor = '#39ff14';
+    ctx.shadowBlur = 12 * scale;
+    ctx.beginPath();
+    ctx.arc(cxs, cys, bezelR, 0, TAU);
+    ctx.strokeStyle = 'rgba(57,255,20,0.75)';
+    ctx.lineWidth = 2.5 * scale;
+    ctx.stroke();
+
+    // Inner dim ring
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(cxs, cys, bezelR - 5 * scale, 0, TAU);
+    ctx.strokeStyle = 'rgba(57,255,20,0.15)';
+    ctx.lineWidth = 1 * scale;
+    ctx.stroke();
+
+    // Tick marks around bezel
+    const numTicks = 72;
+    for (let i = 0; i < numTicks; i++) {
+      const angle = (i / numTicks) * TAU - Math.PI / 2;
+      const isMain = i % 18 === 0;
+      const isMid  = i % 9 === 0;
+      const tickLen   = isMain ? 14 * scale : isMid ? 8 * scale : 4 * scale;
+      const tickAlpha = isMain ? 0.9 : isMid ? 0.55 : 0.22;
+      const r1 = bezelR + 4 * scale;
+      ctx.beginPath();
+      ctx.moveTo(cxs + r1 * Math.cos(angle), cys + r1 * Math.sin(angle));
+      ctx.lineTo(cxs + (r1 + tickLen) * Math.cos(angle), cys + (r1 + tickLen) * Math.sin(angle));
+      ctx.strokeStyle = `rgba(57,255,20,${tickAlpha})`;
+      ctx.lineWidth = (isMain ? 2 : 1) * scale;
+      ctx.stroke();
+    }
+
+    // Targeting brackets at four diagonal positions
+    const bktR   = bezelR + 30 * scale;
+    const bktLen = 18 * scale;
+    ctx.strokeStyle = 'rgba(57,255,20,0.85)';
+    ctx.lineWidth = 2 * scale;
+    ctx.shadowColor = '#39ff14';
+    ctx.shadowBlur = 6 * scale;
+    for (let q = 0; q < 4; q++) {
+      const angle = (q + 0.5) * Math.PI * 0.5;
+      const bx = cxs + bktR * Math.cos(angle);
+      const by = cys + bktR * Math.sin(angle);
+      const tang = { x: -Math.sin(angle), y: Math.cos(angle) };
+      const norm = { x: -Math.cos(angle), y: -Math.sin(angle) };
+      ctx.beginPath();
+      ctx.moveTo(bx + tang.x * bktLen, by + tang.y * bktLen);
+      ctx.lineTo(bx, by);
+      ctx.lineTo(bx + norm.x * bktLen, by + norm.y * bktLen);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(bx - tang.x * bktLen, by - tang.y * bktLen);
+      ctx.lineTo(bx, by);
+      ctx.lineTo(bx + norm.x * bktLen, by + norm.y * bktLen);
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+
+    // "OMITRON" label at bottom of bezel
+    ctx.font = `bold ${8 * scale}px ${fontUI}`;
+    ctx.fillStyle = 'rgba(57,255,20,0.65)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('OMITRON', cxs, cys + bezelR + 28 * scale);
   }
 
   _drawSheen(ctx, W, cxs, cys, Routs, scale) {

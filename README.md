@@ -1,12 +1,14 @@
-# Visual Audio Groove Codec
+# Spiral Visual Audio
 
-A single-page web app that converts audio files into visual spiral representations — like vinyl record grooves — stored as SVG. The encoded SVGs can be played back by reading the spiral geometry.
+A social platform for encoding audio into vinyl-like spiral SVGs and sharing them. The grooves *are* the audio — no hidden metadata, no sidecar data.
 
-Audio is encoded purely into the geometric shape of the spiral. No hidden metadata or sidecar data is stored in the SVG. The wiggles in the spiral *are* the audio.
+## What It Is
 
-## How It Works
+Upload an audio file → it gets encoded into a spiral groove SVG that looks like a vinyl record cross-section. Anyone with the SVG can play it back. Records can be published to a shared feed, liked, commented on, and downloaded.
 
-### Encoding (audio → SVG)
+## How Encoding Works
+
+### Audio → SVG
 1. Mono downmix
 2. Pre-emphasis filter (0.97 coefficient, boosts highs)
 3. Anti-alias lowpass filter (Blackman-windowed sinc)
@@ -15,7 +17,7 @@ Audio is encoded purely into the geometric shape of the spiral. No hidden metada
 6. Map to Archimedean spiral geometry
 7. TPDF dithering before coordinate quantization
 
-### Decoding (SVG → audio)
+### SVG → Audio
 1. Parse polyline coordinates
 2. Extract radial displacements from the base spiral
 3. Mu-law expansion
@@ -25,10 +27,12 @@ Audio is encoded purely into the geometric shape of the spiral. No hidden metada
 7. DC offset removal, peak normalization, fade in/out
 8. Upsample to 8000 Hz minimum for browser compatibility
 
-## Controls
+Encoding parameters (`mulaw`, `preemph`, groove sensitivity `k`) are stored in the SVG `<desc>` element so the decoder is exact. Older SVGs without these flags are handled gracefully.
 
-| Slider | Range | Default |
-|--------|-------|---------|
+## Studio Controls
+
+| Control | Range | Default |
+|---------|-------|---------|
 | Quality | 1–5 | 3 |
 | Spiral Turns | 3–80 | 30 |
 | Groove Sensitivity | 1–10 | 5 |
@@ -44,33 +48,44 @@ Audio is encoded purely into the geometric shape of the spiral. No hidden metada
 | 4 | ~1.5M | ~21.5 MB |
 | 5 | ~2M | ~28.6 MB |
 
-## SVG Format
-
-Encoding parameters are stored in the `<desc>` element for accurate decoding:
-- `mulaw=1` — mu-law companding was applied
-- `preemph=1` — pre-emphasis was applied
-- `k` value (groove sensitivity) — stored exactly so the decoder doesn't need to estimate it
-
-Older SVGs without these flags are handled gracefully.
-
-## Visualizer
-
-Canvas-based rendering of the vinyl disc with:
-- Spinning disc animation during playback
-- Radial gradient, purple label, center spindle
-- Fixed light sheen simulating reflection
-- Red glowing stylus with rotation offset
-
 ## Running Locally
 
 ```bash
+cp .env.example .env
+# fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+npm install
 npm start
 ```
 
 Opens on `http://localhost:3001`. Requires Node.js 18+.
 
-## Files
+The app works without Supabase credentials — the studio and local playback function fully offline. Publishing and the social feed require a Supabase project.
 
-- `index.html` — Full application (HTML + CSS + JS, single file)
-- `server.js` — Simple Node.js static file server
-- `spiral_visual_audio_enhanced-3_GEO_PATCHED_2.html` — Earlier standalone build
+## Stack
+
+- Vite + vanilla ES modules (no framework)
+- Supabase (auth, database, storage)
+- Canvas API for visualizer rendering
+- pushState SPA router (no library)
+
+## Project Structure
+
+```
+src/
+  main.js          — entry point, router init
+  router.js        — pushState SPA router
+  supabase.js      — Supabase client
+  codec.js         — encodeToSVG / decodeFromSVG
+  renderer.js      — canvas visualizer (Renderer class)
+  playback.js      — PlaybackManager
+  skin.js          — SkinManager + skin definitions
+  publish.js       — publish panel (upload + metadata)
+  constants.js     — shared geometry constants
+  style.css        — all colors via CSS custom properties
+  views/
+    studio.js      — main encode/decode/playback view
+    feed.js        — public record feed
+    record.js      — single record page
+    profile.js     — user profile
+    auth.js        — sign in / sign up
+```

@@ -1,14 +1,20 @@
 import { supabase } from '../supabase.js';
 import { navigate } from '../router.js';
+import { skinSwitcherHtml, mountSkinSwitcher } from '../skin-switcher.js';
 
 export async function feedView() {
   document.getElementById('view').innerHTML = `
     <div class="feed-page">
-      <h2 class="feed-title">Recent Records</h2>
+      <div class="page-header">
+        <h2 class="feed-title">Recent Records</h2>
+        ${skinSwitcherHtml()}
+      </div>
       <div class="feed-grid" id="feedGrid">
         <div class="feed-loading">Loading...</div>
       </div>
     </div>`;
+
+  mountSkinSwitcher();
 
   if (!supabase) {
     document.getElementById('feedGrid').innerHTML =

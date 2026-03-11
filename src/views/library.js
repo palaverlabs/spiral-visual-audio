@@ -1,12 +1,18 @@
 import { supabase } from '../supabase.js';
 import { navigate } from '../router.js';
+import { skinSwitcherHtml, mountSkinSwitcher } from '../skin-switcher.js';
 
 export async function libraryView() {
   document.getElementById('view').innerHTML = `
     <div class="library-page">
-      <h2 class="feed-title">My Library</h2>
+      <div class="page-header">
+        <h2 class="feed-title">My Library</h2>
+        ${skinSwitcherHtml()}
+      </div>
       <div id="libraryContent"><div class="feed-loading">Loading...</div></div>
     </div>`;
+
+  mountSkinSwitcher();
 
   if (!supabase) {
     document.getElementById('libraryContent').innerHTML =

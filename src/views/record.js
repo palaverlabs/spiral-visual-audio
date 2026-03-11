@@ -3,6 +3,9 @@ import { navigate } from '../router.js';
 
 const SVG_PLAY = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>`;
 const SVG_PAUSE = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="5" y="4" width="4" height="16"/><rect x="15" y="4" width="4" height="16"/></svg>`;
+const SVG_PREV = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="5" y="4" width="3" height="16"/><polygon points="19,4 8,12 19,20"/></svg>`;
+const SVG_NEXT = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="5,4 16,12 5,20"/><rect x="16" y="4" width="3" height="16"/></svg>`;
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export async function recordView({ id }) {
   document.getElementById('view').innerHTML = `
@@ -18,16 +21,19 @@ export async function recordView({ id }) {
         <div class="record-artist" id="recordArtist"></div>
         <div class="record-meta" id="recordMeta"></div>
         <div class="record-transport">
+          <button class="skip-btn" id="recordPrevBtn" disabled></button>
           <div class="play-wrap" id="recordPlayWrap">
             <div class="play-ring"></div>
             <button class="play-btn" id="recordPlayBtn" disabled></button>
           </div>
+          <button class="skip-btn" id="recordNextBtn" disabled></button>
           <span class="time-display">
             <span id="recordCurrentTime">0:00</span>
             <span class="t-sep"> / </span>
             <span id="recordTotalTime">0:00</span>
           </span>
         </div>
+        <div class="up-next" id="upNext" style="display:none"></div>
       </div>
     </div>`;
 
@@ -74,8 +80,23 @@ export async function recordView({ id }) {
     document.getElementById('recordMeta').after(descEl);
   }
 
-  // Show delete button if current user owns this record
+  // Fetch user + their library for up-next
   const { data: { user } = {} } = await supabase.auth.getUser().catch(() => ({ data: {} }));
+  let nextRecord = null, prevRecord = null;
+  if (user) {
+    const { data: libraryRecords } = await supabase
+      .from('records')
+      .select('id, title, artist, thumbnail_path, cover_path')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    if (libraryRecords?.length) {
+      const idx = libraryRecords.findIndex(r => r.id === id);
+      if (idx !== -1) {
+        if (idx + 1 < libraryRecords.length) nextRecord = libraryRecords[idx + 1];
+        if (idx > 0) prevRecord = libraryRecords[idx - 1];
+      }
+    }
+  }
   if (user && user.id === record.user_id) {
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'action-btn record-delete-btn';
@@ -200,6 +221,38 @@ export async function recordView({ id }) {
     document.getElementById('recordTotalTime').textContent = fmt(duration);
     setStatus('Ready', 'success');
 
+    // Up next
+    let upNextTimer = null;
+    const upNextEl = document.getElementById('upNext');
+    if (nextRecord) {
+      const thumbPath = nextRecord.cover_path || nextRecord.thumbnail_path;
+      const thumbUrl = thumbPath
+        ? supabase.storage.from('records').getPublicUrl(thumbPath).data.publicUrl
+        : null;
+      const img = thumbUrl ? `<img class="up-next-thumb" src="${thumbUrl}" alt="">` : `<div class="up-next-thumb"></div>`;
+      upNextEl.innerHTML = `
+        ${img}
+        <div class="up-next-info">
+          <div class="up-next-label">Up Next</div>
+          <div class="up-next-title">${esc(nextRecord.title)}</div>
+          ${nextRecord.artist ? `<div class="up-next-artist">${esc(nextRecord.artist)}</div>` : ''}
+        </div>
+        <button class="up-next-cancel" id="upNextCancel" style="display:none">Cancel</button>`;
+      upNextEl.style.display = 'flex';
+      upNextEl.style.cursor = 'pointer';
+      upNextEl.addEventListener('click', e => {
+        if (e.target.id === 'upNextCancel') return;
+        navigate(`/r/${nextRecord.id}`);
+      });
+    }
+
+    const prevBtn = document.getElementById('recordPrevBtn');
+    const nextBtn = document.getElementById('recordNextBtn');
+    prevBtn.innerHTML = SVG_PREV;
+    nextBtn.innerHTML = SVG_NEXT;
+    if (prevRecord) { prevBtn.disabled = false; prevBtn.addEventListener('click', () => navigate(`/r/${prevRecord.id}`)); }
+    if (nextRecord) { nextBtn.disabled = false; nextBtn.addEventListener('click', () => navigate(`/r/${nextRecord.id}`)); }
+
     const skinMgr = new SkinManager();
     const skin = skinMgr.restore() || SKINS.owl;
     if (!skinMgr.restore()) skinMgr.apply(skin);
@@ -213,6 +266,25 @@ export async function recordView({ id }) {
     let lastFrameTime = performance.now();
 
     const playback = new PlaybackManager({
+      onEnd: () => {
+        if (!nextRecord) return;
+        let secs = 3;
+        const cancelBtn = document.getElementById('upNextCancel');
+        if (cancelBtn) cancelBtn.style.display = 'block';
+        const label = upNextEl.querySelector('.up-next-label');
+        const tick = () => {
+          if (label) label.textContent = `Playing next in ${secs}…`;
+          if (secs === 0) { navigate(`/r/${nextRecord.id}`); return; }
+          secs--;
+          upNextTimer = setTimeout(tick, 1000);
+        };
+        tick();
+        cancelBtn?.addEventListener('click', () => {
+          clearTimeout(upNextTimer);
+          if (label) label.textContent = 'Up Next';
+          cancelBtn.style.display = 'none';
+        });
+      },
       onFrame: ({ progress, audioTimePosition, amplitude = 0 }) => {
         const now = performance.now();
         const dt = Math.min((now - lastFrameTime) / 1000, 0.05);
@@ -282,10 +354,13 @@ export async function recordView({ id }) {
     }
 
     // Increment play count atomically (SECURITY DEFINER bypasses RLS so any visitor counts)
-    supabase.rpc('increment_plays', { record_id: id });
+    supabase.rpc('increment_plays', { record_id: id }).then(({ error }) => {
+      if (error) console.error('increment_plays error:', error);
+    });
 
     return () => {
       playback.stop();
+      clearTimeout(upNextTimer);
       document.removeEventListener('visibilitychange', onVisibility);
       if ('mediaSession' in navigator) navigator.mediaSession.metadata = null;
     };

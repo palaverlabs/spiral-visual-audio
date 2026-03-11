@@ -12,7 +12,7 @@ const STUDIO_HTML = `
       <div class="skin-switcher">
         <button class="skin-dot" id="skinClassic" title="Classic"  style="--dot:#4ecdc4"></button>
         <button class="skin-dot" id="skinVagc77"  title="VAGC-77"  style="--dot:#00e5ff"></button>
-        <button class="skin-dot" id="skinOmitron" title="OMITRON"  style="--dot:#00c8e8"></button>
+        <button class="skin-dot" id="skinOmitron" title="OMITRON"  style="--dot:#39ff14"></button>
         <button class="skin-dot" id="skinOwl"     title="OWL"      style="--dot:#d4880a"></button>
         <button class="skin-dot" id="skinEq"      title="EQ"       style="--dot:#00e060"></button>
       </div>
