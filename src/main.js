@@ -82,6 +82,12 @@ route('/r/:id', async ({ id }) => {
   return recordView({ id });
 });
 
+route('/r/:id/e/:n', async ({ id, n }) => {
+  const { editionView } = await import('./views/edition.js');
+  await editionView({ id, n });
+  updateNav();
+});
+
 route('/about', async () => {
   const { aboutView } = await import('./views/about.js');
   aboutView();

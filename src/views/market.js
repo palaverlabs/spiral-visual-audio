@@ -1,12 +1,7 @@
 import { supabase } from '../supabase.js';
+import { esc, rarityTier } from '../ui.js';
 import { navigate } from '../router.js';
 
-function rarityTier(editionSize) {
-  if (editionSize <= 10) return { label: 'Ultra Rare', class: 'rarity-ultra' };
-  if (editionSize <= 50) return { label: 'Rare', class: 'rarity-rare' };
-  if (editionSize <= 250) return { label: 'Limited', class: 'rarity-limited' };
-  return { label: 'Open Edition', class: 'rarity-open' };
-}
 
 export async function marketView() {
   document.getElementById('view').innerHTML = `
@@ -102,8 +97,3 @@ export async function marketView() {
   });
 }
 
-function esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
-  );
-}

@@ -1,4 +1,5 @@
 import { supabase } from '../supabase.js';
+import { esc } from '../ui.js';
 import { navigate } from '../router.js';
 
 export async function profileView({ username }) {
@@ -117,8 +118,3 @@ export async function profileView({ username }) {
   }
 }
 
-function esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
-  );
-}

@@ -1,4 +1,5 @@
 import { supabase } from '../supabase.js';
+import { esc } from '../ui.js';
 import { navigate } from '../router.js';
 import { skinSwitcherHtml, mountSkinSwitcher } from '../skin-switcher.js';
 
@@ -104,8 +105,3 @@ function cardHtml(r, badge, value) {
     </div>`;
 }
 
-function esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
-  );
-}

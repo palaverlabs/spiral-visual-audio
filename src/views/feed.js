@@ -1,4 +1,5 @@
 import { supabase } from '../supabase.js';
+import { esc } from '../ui.js';
 import { navigate } from '../router.js';
 import { skinSwitcherHtml, mountSkinSwitcher } from '../skin-switcher.js';
 
@@ -85,8 +86,3 @@ export async function feedView() {
   loadMore();
 }
 
-function esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
-  );
-}

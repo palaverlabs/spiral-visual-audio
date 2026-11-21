@@ -1,6 +1,7 @@
 import { supabase } from '../supabase.js';
 import { navigate } from '../router.js';
 import { unpackGroove } from '../groovepack.js';
+import { esc, rarityTier, cr, timeAgo, userLink, specialBadge, getFees, splitSale, confirmDialog, priceChart } from '../ui.js';
 
 // Prefetch cache: id → Promise<string|null>
 const svgCache = new Map();
@@ -24,14 +25,7 @@ const SVG_PLAY = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentC
 const SVG_PAUSE = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="5" y="4" width="4" height="16"/><rect x="15" y="4" width="4" height="16"/></svg>`;
 const SVG_PREV = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="5" y="4" width="3" height="16"/><polygon points="19,4 8,12 19,20"/></svg>`;
 const SVG_NEXT = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="5,4 16,12 5,20"/><rect x="16" y="4" width="3" height="16"/></svg>`;
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-function rarityTier(editionSize) {
-  if (editionSize <= 10) return { label: 'Ultra Rare', class: 'rarity-ultra' };
-  if (editionSize <= 50) return { label: 'Rare', class: 'rarity-rare' };
-  if (editionSize <= 250) return { label: 'Limited', class: 'rarity-limited' };
-  return { label: 'Open Edition', class: 'rarity-open' };
-}
 
 export async function recordView({ id }) {
   document.getElementById('view').innerHTML = `
@@ -146,155 +140,246 @@ export async function recordView({ id }) {
     });
   }
 
-  // Edition + marketplace UI
+  // Edition + marketplace UI (price strip, actions, your copies, history, listings, supporters, activity)
   if (record.edition_size) {
-    const editionEl = document.createElement('div');
-    editionEl.className = 'record-edition';
-    editionEl.id = 'recordEdition';
-    document.getElementById('recordMeta').after(editionEl);
+    const marketEl = document.createElement('section');
+    marketEl.className = 'release-market';
+    marketEl.id = 'releaseMarket';
+    document.getElementById('upNext').after(marketEl);
 
-    const marketEl = document.createElement('div');
-    marketEl.className = 'record-market';
-    marketEl.id = 'recordMarket';
-    editionEl.after(marketEl);
+    const fees = await getFees();
+    const ui = { range: 'all', filter: '' };
+    let data = null;
 
-    const rarity = rarityTier(record.edition_size);
-
-    const renderMarket = async () => {
-      const { count: claimed } = await supabase
-        .from('collections')
-        .select('*', { count: 'exact', head: true })
-        .eq('record_id', id);
-
-      const soldOut = claimed >= record.edition_size;
-      let html = `<span class="edition-label">Edition of ${record.edition_size} · ${claimed} claimed</span>`;
-      html += ` <span class="edition-badge rarity ${rarity.class}">${rarity.label}</span>`;
-      if (soldOut) html += ` <span class="edition-badge sold-out">Sold Out</span>`;
-
-      let owned = [];
-      if (user) {
-        const { data } = await supabase
-          .from('collections')
-          .select('id, edition_number')
+    const load = async () => {
+      const [stats, listings, owners, txs, me] = await Promise.all([
+        supabase.from('release_market_stats').select('*').eq('record_id', id).maybeSingle(),
+        supabase.from('listings')
+          .select('id, ask_price, status, created_at, resolved_at, seller_id, collections!inner(id, edition_number, record_id), seller:users!listings_seller_id_fkey(username)')
+          .eq('collections.record_id', id)
+          .order('created_at', { ascending: false })
+          .limit(200),
+        supabase.from('collections').select('id, edition_number, user_id, users(username)').eq('record_id', id).order('edition_number'),
+        supabase.from('transactions')
+          .select('id, type, price, edition_number, created_at, buyer:users!transactions_buyer_id_fkey(username), seller:users!transactions_seller_id_fkey(username)')
           .eq('record_id', id)
-          .eq('user_id', user.id)
-          .order('edition_number');
-        owned = data ?? [];
-      }
+          .order('created_at', { ascending: false })
+          .limit(200),
+        user ? supabase.from('users').select('balance').eq('id', user.id).single() : Promise.resolve({ data: null }),
+      ]);
+      const allListings = listings.data ?? [];
+      data = {
+        stats: stats.data ?? {},
+        active: allListings.filter(l => l.status === 'active').sort((a, b) => a.ask_price - b.ask_price),
+        allListings,
+        owners: owners.data ?? [],
+        txs: txs.data ?? [],
+        balance: me.data?.balance ?? null,
+      };
+      data.owned = user ? data.owners.filter(o => o.user_id === user.id) : [];
+      data.myListingFor = new Map(data.active.filter(l => l.seller_id === user?.id).map(l => [l.collections.id, l]));
+    };
 
+    const draw = () => {
+      const { stats, active, owners, txs, owned, myListingFor, balance } = data;
+      const size = record.edition_size;
+      const minted = stats.minted_count ?? owners.length;
+      const left = size - minted;
+      const rarity = rarityTier(size);
+      const ownerCount = new Set(owners.map(o => o.user_id)).size;
+      const buyable = active.filter(l => l.seller_id !== user?.id);
+      const floor = buyable[0] ?? null;
+      const lastSale = stats.last_sale_price;
+      const premium = lastSale != null && record.price ? Math.round((lastSale - record.price) / record.price * 100) : null;
+
+      // 1. Edition line
+      let html = `<div class="record-edition">
+        <span class="edition-label">Edition of ${size} · ${minted} minted · ${ownerCount} ${ownerCount === 1 ? 'owner' : 'owners'}</span>
+        <span class="edition-badge rarity ${rarity.class}">${rarity.label}</span>
+        ${left <= 0 ? `<span class="edition-badge sold-out">Sold Out</span>` : ''}
+        ${owned.length ? `<span class="edition-badge owned">You own ${owned.map(o => `#${o.edition_number}`).join(', ')}</span>` : ''}
+      </div>`;
+
+      // 2. Price strip
+      html += `<div class="price-strip">
+        <div class="price-cell"><span class="price-label">Lowest ask</span><span class="price-value">${cr(stats.floor_ask)}</span></div>
+        <div class="price-cell"><span class="price-label">Highest offer</span><span class="price-value muted">—</span><span class="price-sub">Offers coming soon</span></div>
+        <div class="price-cell"><span class="price-label">Last sale</span><span class="price-value">${cr(lastSale)}</span>${stats.last_sale_at ? `<span class="price-sub">${timeAgo(stats.last_sale_at)}</span>` : ''}</div>
+        <div class="price-cell"><span class="price-label">Original</span><span class="price-value">${cr(record.price)}</span>${premium != null ? `<span class="price-sub ${premium >= 0 ? 'up' : 'down'}">${premium >= 0 ? '+' : ''}${premium}% last sale</span>` : ''}</div>
+      </div>`;
+
+      // 3. Actions
+      html += `<div class="market-actions">`;
+      if (!user) {
+        html += `<span class="edition-sign-in"><a href="/auth" data-route="/auth">Sign in</a> to collect or buy</span>`;
+      } else {
+        if (left > 0 && record.price) html += `<button class="action-btn" id="collectBtn">Collect #${minted + 1} from artist — ${cr(record.price)}</button>`;
+        if (floor) html += `<button class="action-btn" id="buyNowBtn">Buy now #${floor.collections.edition_number} — ${cr(floor.ask_price)}</button>`;
+        if (balance != null) html += `<span class="balance-note">Balance ${cr(balance)}</span>`;
+      }
+      html += `</div>`;
+
+      // 4. Your copies
       if (owned.length) {
-        html += ` <span class="edition-badge owned">You own ${owned.map(o => `#${o.edition_number}`).join(', ')}</span>`;
-      }
-      if (user && !soldOut) {
-        html += ` <button class="action-btn edition-collect-btn" id="collectBtn">${owned.length ? 'Collect another' : 'Collect'} — ${record.price} cr</button>`;
-      } else if (!user && !soldOut) {
-        html += ` <span class="edition-sign-in"><a href="/auth">Sign in</a> to collect</span>`;
-      }
-
-      editionEl.innerHTML = html;
-
-      const collectBtn = document.getElementById('collectBtn');
-      if (collectBtn) {
-        collectBtn.addEventListener('click', async () => {
-          collectBtn.disabled = true;
-          collectBtn.textContent = 'Collecting...';
-          const { error: buyErr } = await supabase.rpc('purchase_edition', { p_record_id: id });
-          if (buyErr) {
-            collectBtn.disabled = false;
-            collectBtn.textContent = `Collect — ${record.price} cr`;
-            setStatus(
-              buyErr.message.includes('Sold out') ? 'Sold out!' :
-              buyErr.message.includes('Insufficient') ? 'Not enough credits.' :
-              `Failed: ${buyErr.message}`, 'error');
-          } else {
-            await renderMarket();
-          }
-        });
-      }
-
-      // Resale: one row per copy this user owns
-      let myListingHtml = '';
-      if (owned.length) {
-        const { data: myListings } = await supabase
-          .from('listings')
-          .select('id, ask_price, collection_id')
-          .in('collection_id', owned.map(o => o.id))
-          .eq('status', 'active');
-        const listingFor = new Map((myListings ?? []).map(l => [l.collection_id, l]));
-
-        myListingHtml = owned.map(o => {
-          const l = listingFor.get(o.id);
+        html += `<div class="market-section"><div class="profile-section-heading">Your copies</div>`;
+        html += owned.map(o => {
+          const l = myListingFor.get(o.id);
+          const edLink = `<a class="edition-link" href="/r/${id}/e/${o.edition_number}" data-route="/r/${id}/e/${o.edition_number}">#${o.edition_number}</a>`;
           return l ? `
-            <div class="resale-row">
-              <span class="edition-badge listed">#${o.edition_number} listed for ${l.ask_price} cr</span>
+            <div class="resale-row">${edLink} ${specialBadge(o.edition_number, size)}
+              <span class="edition-badge listed">Listed at ${cr(l.ask_price)}</span>
               <button class="action-btn text-btn cancel-listing-btn" data-listing-id="${l.id}">Cancel listing</button>
             </div>` : `
-            <div class="resale-row">
-              <span class="edition-badge owned">#${o.edition_number}</span>
-              <input type="number" class="resale-price-input" data-collection-id="${o.id}" placeholder="Ask price (cr)" min="1" step="1">
-              <button class="action-btn list-btn" data-collection-id="${o.id}">List for resale</button>
+            <div class="resale-row">${edLink} ${specialBadge(o.edition_number, size)}
+              <input type="number" class="resale-price-input" data-collection-id="${o.id}" placeholder="Ask (cr)" min="1" step="1">
+              <button class="action-btn list-btn" data-collection-id="${o.id}">List</button>
+              <span class="receive-note" data-receive-for="${o.id}">${[stats.floor_ask ? `Floor ${cr(stats.floor_ask)}` : '', lastSale ? `Last sale ${cr(lastSale)}` : ''].filter(Boolean).join(' · ')}</span>
             </div>`;
         }).join('');
+        html += `</div>`;
       }
 
-      // Other copies currently for sale by other collectors
-      const { data: otherListings } = await supabase
-        .from('listings')
-        .select('id, ask_price, collections!inner(id, edition_number, user_id, record_id, users(username))')
-        .eq('status', 'active')
-        .eq('collections.record_id', id);
+      // 5. Price history
+      const cutoff = ui.range === 'all' ? 0 : Date.now() - (ui.range === '30d' ? 30 : 90) * 86400e3;
+      const sales = txs.filter(t => t.type === 'secondary' && new Date(t.created_at).getTime() >= cutoff).reverse();
+      html += `<div class="market-section">
+        <div class="section-head"><div class="profile-section-heading">Price history</div>
+          <div class="range-tabs">${['30d', '90d', 'all'].map(r => `<button class="range-tab${ui.range === r ? ' active' : ''}" data-range="${r}">${r === 'all' ? 'All' : r}</button>`).join('')}</div>
+        </div>
+        ${priceChart(sales, record.price)}
+      </div>`;
 
-      const resaleListings = (otherListings ?? []).filter(l => l.collections.user_id !== user?.id);
-      let listingsHtml = '';
-      if (resaleListings.length) {
-        listingsHtml = `<div class="resale-listings">
-          <div class="profile-section-heading resale-heading">For Resale</div>
-          ${resaleListings.map(l => `
-            <div class="resale-listing-row" data-listing-id="${l.id}">
-              <span>#${l.collections.edition_number} · ${esc(l.collections.users?.username ? `@${l.collections.users.username}` : 'collector')}</span>
-              <button class="action-btn buy-listing-btn" data-listing-id="${l.id}" ${!user ? 'disabled' : ''}>
-                Buy for ${l.ask_price} cr
-              </button>
-            </div>`).join('')}
+      // 6. Listings table
+      const shown = ui.filter ? active.filter(l => String(l.collections.edition_number) === ui.filter) : active;
+      html += `<div class="market-section">
+        <div class="section-head"><div class="profile-section-heading">Listings (${active.length})</div>
+          ${active.length ? `<input type="number" class="edition-filter" id="editionFilter" placeholder="Edition #" min="1" value="${esc(ui.filter)}">` : ''}
+        </div>
+        ${shown.length ? `<table class="market-table">
+          <thead><tr><th>Edition</th><th>Seller</th><th>Ask</th><th>Listed</th><th></th></tr></thead>
+          <tbody>${shown.map(l => `<tr>
+            <td><a class="edition-link" href="/r/${id}/e/${l.collections.edition_number}" data-route="/r/${id}/e/${l.collections.edition_number}">#${l.collections.edition_number}</a> ${specialBadge(l.collections.edition_number, size)}</td>
+            <td>${userLink(l.seller)}</td>
+            <td>${cr(l.ask_price)}</td>
+            <td>${timeAgo(l.created_at)}</td>
+            <td>${l.seller_id === user?.id ? '<span class="muted">Yours</span>' : `<button class="action-btn buy-listing-btn" data-listing-id="${l.id}" ${!user ? 'disabled' : ''}>Buy</button>`}</td>
+          </tr>`).join('')}</tbody></table>`
+          : `<div class="chart-empty">${ui.filter ? `No listing for #${esc(ui.filter)}` : 'No copies listed'}</div>`}
+      </div>`;
+
+      // 7. Supporters wall
+      if (owners.length) {
+        html += `<div class="market-section"><div class="profile-section-heading">Supporters</div>
+          <div class="supporters">${owners.map(o => `<span class="supporter"><a class="edition-link" href="/r/${id}/e/${o.edition_number}" data-route="/r/${id}/e/${o.edition_number}">#${o.edition_number}</a> ${userLink(o.users)}</span>`).join('')}</div>
         </div>`;
       }
 
-      marketEl.innerHTML = myListingHtml + listingsHtml;
+      // 8. Activity
+      const events = [
+        ...txs.map(t => ({ at: t.created_at, html: t.type === 'primary'
+          ? `${userLink(t.buyer)} collected #${t.edition_number} for ${cr(t.price)}`
+          : `${userLink(t.buyer)} bought #${t.edition_number} from ${userLink(t.seller)} for ${cr(t.price)}` })),
+        ...data.allListings.map(l => ({ at: l.created_at, html: `${userLink(l.seller)} listed #${l.collections.edition_number} for ${cr(l.ask_price)}` })),
+        ...data.allListings.filter(l => l.status === 'cancelled' && l.resolved_at).map(l => ({ at: l.resolved_at, html: `${userLink(l.seller)} cancelled the listing for #${l.collections.edition_number}` })),
+      ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 15);
+      if (events.length) {
+        html += `<div class="market-section"><div class="profile-section-heading">Activity</div>
+          <ul class="activity-list">${events.map(e => `<li><span>${e.html}</span><span class="muted">${timeAgo(e.at)}</span></li>`).join('')}</ul>
+        </div>`;
+      }
 
-      marketEl.querySelectorAll('.list-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const cid = btn.dataset.collectionId;
-          const priceRaw = marketEl.querySelector(`.resale-price-input[data-collection-id="${cid}"]`).value;
-          const askPrice = parseInt(priceRaw);
-          if (!priceRaw || isNaN(askPrice) || askPrice < 1) { setStatus('Enter a valid resale price.', 'error'); return; }
-          btn.disabled = true;
-          const { error } = await supabase.rpc('create_listing', { p_collection_id: cid, p_ask_price: askPrice });
-          if (error) setStatus(`Failed: ${error.message}`, 'error');
-          await renderMarket();
-        });
-      });
-
-      marketEl.querySelectorAll('.cancel-listing-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          btn.disabled = true;
-          const { error } = await supabase.rpc('cancel_listing', { p_listing_id: btn.dataset.listingId });
-          if (error) setStatus(`Failed: ${error.message}`, 'error');
-          await renderMarket();
-        });
-      });
-
-      marketEl.querySelectorAll('.buy-listing-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          btn.disabled = true;
-          btn.textContent = 'Buying...';
-          const { error } = await supabase.rpc('buy_listing', { p_listing_id: btn.dataset.listingId });
-          if (error) setStatus(error.message.includes('Insufficient') ? 'Not enough credits.' : `Failed: ${error.message}`, 'error');
-          await renderMarket();
-        });
-      });
+      marketEl.innerHTML = html;
+      bind({ floor, minted });
     };
 
-    await renderMarket();
+    const refresh = async () => { await load(); draw(); };
+
+    const fail = (error) => setStatus(
+      error.message.includes('Sold out') ? 'Sold out!' :
+      error.message.includes('Insufficient') ? 'Not enough credits.' :
+      `Failed: ${error.message}`, 'error');
+
+    const bind = ({ floor, minted }) => {
+      const balance = data.balance;
+
+      document.getElementById('collectBtn')?.addEventListener('click', async (e) => {
+        const price = record.price;
+        const s = splitSale(price, 'primary', fees);
+        const ok = await confirmDialog({
+          title: `Collect #${minted + 1} of ${record.edition_size}`,
+          rows: [
+            ['Price', cr(price), true],
+            ['Artist receives', cr(s.proceeds)],
+            ['Platform fee', cr(s.fee)],
+            ['Your balance after', balance != null ? cr(balance - price) : '—'],
+          ],
+          note: balance != null && balance < price ? 'You do not have enough credits.' : '',
+          confirmLabel: `Pay ${cr(price)}`,
+        });
+        if (!ok) return;
+        e.target.disabled = true;
+        const { error } = await supabase.rpc('purchase_edition', { p_record_id: id });
+        if (error) fail(error); else setStatus('Collected!', 'success');
+        await refresh();
+      });
+
+      const buyListing = async (listing, btn) => {
+        const s = splitSale(listing.ask_price, 'secondary', fees);
+        const ok = await confirmDialog({
+          title: `Buy #${listing.collections.edition_number} of ${record.edition_size}`,
+          rows: [
+            ['Price', cr(listing.ask_price), true],
+            [`Artist royalty (${fees.royalty_bps / 100}%)`, cr(s.royalty)],
+            [`Platform fee (${fees.secondary_fee_bps / 100}%)`, cr(s.fee)],
+            [`Seller receives`, cr(s.proceeds)],
+            ['Your balance after', balance != null ? cr(balance - listing.ask_price) : '—'],
+          ],
+          note: balance != null && balance < listing.ask_price ? 'You do not have enough credits.' : '',
+          confirmLabel: `Pay ${cr(listing.ask_price)}`,
+        });
+        if (!ok) return;
+        if (btn) btn.disabled = true;
+        const { error } = await supabase.rpc('buy_listing', { p_listing_id: listing.id });
+        if (error) fail(error); else setStatus(`You bought #${listing.collections.edition_number}!`, 'success');
+        await refresh();
+      };
+
+      document.getElementById('buyNowBtn')?.addEventListener('click', e => buyListing(floor, e.target));
+      marketEl.querySelectorAll('.buy-listing-btn').forEach(btn => btn.addEventListener('click', () =>
+        buyListing(data.active.find(l => l.id === btn.dataset.listingId), btn)));
+
+      marketEl.querySelectorAll('.resale-price-input').forEach(input => input.addEventListener('input', () => {
+        const note = marketEl.querySelector(`[data-receive-for="${input.dataset.collectionId}"]`);
+        const price = parseInt(input.value);
+        if (!note || !(price > 0)) return;
+        const s = splitSale(price, 'secondary', fees);
+        note.textContent = `You receive ${cr(s.proceeds)} (artist ${cr(s.royalty)} · fee ${cr(s.fee)})`;
+      }));
+
+      marketEl.querySelectorAll('.list-btn').forEach(btn => btn.addEventListener('click', async () => {
+        const cid = btn.dataset.collectionId;
+        const askPrice = parseInt(marketEl.querySelector(`.resale-price-input[data-collection-id="${cid}"]`).value);
+        if (!(askPrice >= 1)) { setStatus('Enter a valid ask price.', 'error'); return; }
+        btn.disabled = true;
+        const { error } = await supabase.rpc('create_listing', { p_collection_id: cid, p_ask_price: askPrice });
+        if (error) fail(error);
+        await refresh();
+      }));
+
+      marketEl.querySelectorAll('.cancel-listing-btn').forEach(btn => btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        const { error } = await supabase.rpc('cancel_listing', { p_listing_id: btn.dataset.listingId });
+        if (error) fail(error);
+        await refresh();
+      }));
+
+      marketEl.querySelectorAll('.range-tab').forEach(btn => btn.addEventListener('click', () => { ui.range = btn.dataset.range; draw(); }));
+
+      const filterEl = document.getElementById('editionFilter');
+      filterEl?.addEventListener('change', () => { ui.filter = filterEl.value.trim(); draw(); });
+    };
+
+    await refresh();
   }
 
   const { data: urlData } = supabase.storage.from('records').getPublicUrl(record.file_path);
