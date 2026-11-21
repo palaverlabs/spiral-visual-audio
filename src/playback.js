@@ -69,8 +69,13 @@ export class PlaybackManager {
       this._latestProgress = startProgress;
 
       const isStereo = right !== null;
-      // outputChannelCount option omitted — causes errors on some iOS Safari versions.
-      this._node = new AudioWorkletNode(ctx, 'groove-processor');
+      // Without outputChannelCount the worklet output is mono (no input to inherit from),
+      // which silently drops the right channel. Some iOS Safari versions throw on it, so fall back.
+      try {
+        this._node = new AudioWorkletNode(ctx, 'groove-processor', isStereo ? { outputChannelCount: [2] } : undefined);
+      } catch {
+        this._node = new AudioWorkletNode(ctx, 'groove-processor');
+      }
       this._analyser = ctx.createAnalyser();
       this._analyser.fftSize = 256;
       this._analyser.smoothingTimeConstant = 0.8;

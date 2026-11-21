@@ -12,6 +12,7 @@ export async function authView() {
       <input type="email"    id="authEmail"    placeholder="Email"    autocomplete="email">
       <input type="password" id="authPassword" placeholder="Password" autocomplete="current-password">
       <button class="action-btn auth-submit" id="authSubmit">Sign in</button>
+      <button class="auth-link" id="tabForgot">Forgot password?</button>
       <div class="auth-status" id="authStatus"></div>
     </div>`;
 
@@ -19,39 +20,45 @@ export async function authView() {
 
   let mode = 'signin';
 
-  document.getElementById('tabSignIn').addEventListener('click', () => {
-    mode = 'signin';
-    document.getElementById('tabSignIn').classList.add('active');
-    document.getElementById('tabSignUp').classList.remove('active');
-    document.getElementById('authUsername').style.display = 'none';
-    document.getElementById('authSubmit').textContent = 'Sign in';
+  const setMode = (m) => {
+    mode = m;
+    const isReset = m === 'reset';
+    const isSignUp = m === 'signup';
+    document.getElementById('tabSignIn').classList.toggle('active', m === 'signin');
+    document.getElementById('tabSignUp').classList.toggle('active', isSignUp);
+    document.getElementById('authUsername').style.display = isSignUp ? 'block' : 'none';
+    document.getElementById('authPassword').style.display = isReset ? 'none' : 'block';
+    document.getElementById('tabForgot').style.display = isReset ? 'none' : (m === 'signin' ? 'block' : 'none');
+    document.getElementById('authSubmit').textContent =
+      m === 'signin' ? 'Sign in' : m === 'signup' ? 'Create account' : 'Send reset link';
     setStatus('');
-  });
+  };
 
-  document.getElementById('tabSignUp').addEventListener('click', () => {
-    mode = 'signup';
-    document.getElementById('tabSignUp').classList.add('active');
-    document.getElementById('tabSignIn').classList.remove('active');
-    document.getElementById('authUsername').style.display = 'block';
-    document.getElementById('authSubmit').textContent = 'Create account';
-    setStatus('');
-  });
+  document.getElementById('tabSignIn').addEventListener('click', () => setMode('signin'));
+  document.getElementById('tabSignUp').addEventListener('click', () => setMode('signup'));
+  document.getElementById('tabForgot').addEventListener('click', () => setMode('reset'));
 
   document.getElementById('authSubmit').addEventListener('click', async () => {
     const email    = document.getElementById('authEmail').value.trim();
     const password = document.getElementById('authPassword').value;
     const username = document.getElementById('authUsername').value.trim();
 
-    if (!email || !password) { setStatus('Enter email and password.', 'error'); return; }
+    if (!email) { setStatus('Enter your email.', 'error'); return; }
+    if (mode !== 'reset' && !password) { setStatus('Enter email and password.', 'error'); return; }
     if (mode === 'signup' && !username) { setStatus('Choose a username.', 'error'); return; }
 
     const btn = document.getElementById('authSubmit');
     btn.disabled = true;
-    btn.textContent = mode === 'signin' ? 'Signing in...' : 'Creating account...';
+    btn.textContent = mode === 'signin' ? 'Signing in...' : mode === 'signup' ? 'Creating account...' : 'Sending...';
     setStatus('');
 
     try {
-      if (mode === 'signin') {
+      if (mode === 'reset') {
+        const { error } = await supabase.auth.resetPasswordForEmail(email);
+        if (error) { setStatus(error.message, 'error'); return; }
+        setStatus('Check your email for a password reset link.', 'success');
+        return;
+      } else if (mode === 'signin') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) { setStatus(error.message, 'error'); return; }
       } else {
@@ -72,7 +79,10 @@ export async function authView() {
       setStatus(err.message, 'error');
     } finally {
       const b = document.getElementById('authSubmit');
-      if (b) { b.disabled = false; b.textContent = mode === 'signin' ? 'Sign in' : 'Create account'; }
+      if (b) {
+        b.disabled = false;
+        b.textContent = mode === 'signin' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Send reset link';
+      }
     }
   });
 }

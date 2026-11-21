@@ -267,6 +267,10 @@ class App {
   }
 
   async loadAudioFile(file) {
+    if (file.size > 100 * 1024 * 1024) {
+      this._statusError(`File too large (${(file.size / 1024 / 1024).toFixed(0)} MB). Maximum is 100 MB.`);
+      return;
+    }
     this.debug(`Loading audio file: ${file.name}`);
     this._setStatus('Loading audio file...', 'info');
     try {

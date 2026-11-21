@@ -59,6 +59,12 @@ route('/studio', async () => {
   return mountStudio();
 });
 
+route('/market', async () => {
+  const { marketView } = await import('./views/market.js');
+  await marketView();
+  updateNav();
+});
+
 route('/library', async () => {
   const { libraryView } = await import('./views/library.js');
   await libraryView();

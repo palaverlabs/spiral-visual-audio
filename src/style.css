@@ -626,6 +626,22 @@ input[type="file"] { display: none; }
   text-align: center;
 }
 
+.market-card {
+  display: flex;
+  flex-direction: column;
+}
+.market-buy-btn {
+  margin-top: 10px;
+  width: 100%;
+  justify-content: center;
+}
+
+.feed-load-more {
+  grid-column: 1 / -1;
+  margin: 8px auto 0;
+  display: block;
+}
+
 /* ── Auth ── */
 .auth-page { max-width: 420px; }
 
@@ -674,8 +690,20 @@ input[type="file"] { display: none; }
 .auth-submit {
   width: 100%;
   justify-content: center;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
+
+.auth-link {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0 0 12px;
+  text-decoration: underline;
+  text-align: left;
+}
+.auth-link:hover { color: var(--text); }
 
 .auth-status {
   font-size: 0.75rem;
@@ -981,6 +1009,72 @@ input[type="file"] { display: none; }
   border: 1px solid rgba(0,255,180,0.3);
 }
 
+.edition-badge.listed {
+  background: rgba(255,193,7,0.1);
+  color: var(--status-info);
+  border: 1px solid rgba(255,193,7,0.3);
+}
+
+.edition-badge.rarity.rarity-ultra {
+  background: rgba(218,112,214,0.12);
+  color: var(--upload-svg);
+  border: 1px solid rgba(218,112,214,0.3);
+}
+.edition-badge.rarity.rarity-rare {
+  background: rgba(78,205,196,0.12);
+  color: var(--accent);
+  border: 1px solid rgba(78,205,196,0.3);
+}
+.edition-badge.rarity.rarity-limited {
+  background: rgba(255,255,255,0.06);
+  color: var(--text-secondary);
+  border: 1px solid var(--panel-border);
+}
+.edition-badge.rarity.rarity-open {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--panel-border);
+}
+
+/* ── Resale / marketplace ── */
+.record-market { margin-top: 10px; }
+
+.resale-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.resale-row input[type="number"] {
+  width: 120px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.8125rem;
+  padding: 7px 10px;
+  outline: none;
+  font-family: var(--font-ui);
+}
+.resale-row input[type="number"]:focus { border-color: var(--accent); }
+
+.resale-listings { margin-top: 16px; }
+
+.resale-heading { margin: 0 0 10px; }
+
+.resale-listing-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.resale-listing-row:last-child { border-bottom: none; }
+
 .edition-collect-btn {
   font-size: 0.75rem;
   padding: 4px 14px;
@@ -1016,6 +1110,20 @@ input[type="file"] { display: none; }
 
 /* ── Library page ── */
 .library-page { width: 100%; }
+
+.library-balance {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.library-balance strong { color: var(--accent); }
+
+.collection-value-total {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: -8px 0 14px;
+}
+.collection-value-total strong { color: var(--accent); }
 
 /* ── Studio library browser ── */
 .library-browser {
@@ -1170,7 +1278,14 @@ input[type="file"] { display: none; }
   min-width: 0;
 }
 
+.publish-edition-row {
+  display: flex;
+  gap: 8px;
+}
+.publish-edition-row input { flex: 1; min-width: 0; }
+
 .publish-form input[type="text"],
+.publish-form input[type="number"],
 .publish-form textarea {
   width: 100%;
   background: rgba(255,255,255,0.05);
@@ -1192,6 +1307,7 @@ input[type="file"] { display: none; }
 }
 
 .publish-form input[type="text"]:focus,
+.publish-form input[type="number"]:focus,
 .publish-form textarea:focus { border-color: var(--accent); }
 
 .publish-public-row {

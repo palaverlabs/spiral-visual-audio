@@ -1,11 +1,46 @@
 import { supabase } from '../supabase.js';
 import { navigate } from '../router.js';
 
+// Prefetch cache: id → Promise<string|null>
+const svgCache = new Map();
+
+async function fetchSvgText(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const buf = await resp.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const isGzip = bytes[0] === 0x1f && bytes[1] === 0x8b;
+  if (isGzip) {
+    const ds = new DecompressionStream('gzip');
+    const writer = ds.writable.getWriter();
+    writer.write(bytes);
+    writer.close();
+    return new Response(ds.readable).text();
+  }
+  return new TextDecoder().decode(buf);
+}
+
+function prefetchSvg(record) {
+  if (!record?.file_path || svgCache.has(record.id)) return;
+  if (svgCache.size >= 3) svgCache.delete(svgCache.keys().next().value);
+  const { data: urlData } = supabase.storage.from('records').getPublicUrl(record.file_path);
+  const url = urlData?.publicUrl;
+  if (!url) return;
+  svgCache.set(record.id, fetchSvgText(url).catch(() => { svgCache.delete(record.id); return null; }));
+}
+
 const SVG_PLAY = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>`;
 const SVG_PAUSE = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="5" y="4" width="4" height="16"/><rect x="15" y="4" width="4" height="16"/></svg>`;
 const SVG_PREV = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="5" y="4" width="3" height="16"/><polygon points="19,4 8,12 19,20"/></svg>`;
 const SVG_NEXT = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="5,4 16,12 5,20"/><rect x="16" y="4" width="3" height="16"/></svg>`;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function rarityTier(editionSize) {
+  if (editionSize <= 10) return { label: 'Ultra Rare', class: 'rarity-ultra' };
+  if (editionSize <= 50) return { label: 'Rare', class: 'rarity-rare' };
+  if (editionSize <= 250) return { label: 'Limited', class: 'rarity-limited' };
+  return { label: 'Open Edition', class: 'rarity-open' };
+}
 
 export async function recordView({ id }) {
   document.getElementById('view').innerHTML = `
@@ -86,7 +121,7 @@ export async function recordView({ id }) {
   if (user) {
     const { data: libraryRecords } = await supabase
       .from('records')
-      .select('id, title, artist, thumbnail_path, cover_path')
+      .select('id, title, artist, thumbnail_path, cover_path, file_path')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
     if (libraryRecords?.length) {
@@ -97,6 +132,7 @@ export async function recordView({ id }) {
       }
     }
   }
+  if (nextRecord) prefetchSvg(nextRecord);
   if (user && user.id === record.user_id) {
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'action-btn record-delete-btn';
@@ -119,14 +155,21 @@ export async function recordView({ id }) {
     });
   }
 
-  // Edition UI
+  // Edition + marketplace UI
   if (record.edition_size) {
     const editionEl = document.createElement('div');
     editionEl.className = 'record-edition';
     editionEl.id = 'recordEdition';
     document.getElementById('recordMeta').after(editionEl);
 
-    const renderEdition = async () => {
+    const marketEl = document.createElement('div');
+    marketEl.className = 'record-market';
+    marketEl.id = 'recordMarket';
+    editionEl.after(marketEl);
+
+    const rarity = rarityTier(record.edition_size);
+
+    const renderMarket = async () => {
       const { count: claimed } = await supabase
         .from('collections')
         .select('*', { count: 'exact', head: true })
@@ -134,24 +177,25 @@ export async function recordView({ id }) {
 
       const soldOut = claimed >= record.edition_size;
       let html = `<span class="edition-label">Edition of ${record.edition_size} · ${claimed} claimed</span>`;
-      if (soldOut) {
-        html += ` <span class="edition-badge sold-out">Sold Out</span>`;
-      }
+      html += ` <span class="edition-badge rarity ${rarity.class}">${rarity.label}</span>`;
+      if (soldOut) html += ` <span class="edition-badge sold-out">Sold Out</span>`;
 
+      let owned = null;
       if (user) {
-        const { data: owned } = await supabase
+        const { data } = await supabase
           .from('collections')
-          .select('edition_number')
+          .select('id, edition_number')
           .eq('record_id', id)
           .eq('user_id', user.id)
-          .single();
+          .maybeSingle();
+        owned = data;
+      }
 
-        if (owned) {
-          html += ` <span class="edition-badge owned">You own #${owned.edition_number}</span>`;
-        } else if (!soldOut) {
-          html += ` <button class="action-btn edition-collect-btn" id="collectBtn">Collect</button>`;
-        }
-      } else if (!soldOut) {
+      if (owned) {
+        html += ` <span class="edition-badge owned">You own #${owned.edition_number}</span>`;
+      } else if (user && !soldOut) {
+        html += ` <button class="action-btn edition-collect-btn" id="collectBtn">Collect — ${record.price} cr</button>`;
+      } else if (!user && !soldOut) {
         html += ` <span class="edition-sign-in"><a href="/auth">Sign in</a> to collect</span>`;
       }
 
@@ -162,19 +206,97 @@ export async function recordView({ id }) {
         collectBtn.addEventListener('click', async () => {
           collectBtn.disabled = true;
           collectBtn.textContent = 'Collecting...';
-          const { data: num, error: claimErr } = await supabase.rpc('claim_edition', { p_record_id: id });
-          if (claimErr) {
+          const { error: buyErr } = await supabase.rpc('purchase_edition', { p_record_id: id });
+          if (buyErr) {
             collectBtn.disabled = false;
-            collectBtn.textContent = 'Collect';
-            setStatus(claimErr.message.includes('Sold out') ? 'Sold out!' : `Failed: ${claimErr.message}`, 'error');
+            collectBtn.textContent = `Collect — ${record.price} cr`;
+            setStatus(
+              buyErr.message.includes('Sold out') ? 'Sold out!' :
+              buyErr.message.includes('Insufficient') ? 'Not enough credits.' :
+              `Failed: ${buyErr.message}`, 'error');
           } else {
-            await renderEdition();
+            await renderMarket();
           }
         });
       }
+
+      // Resale: this user's own copy, if they have one
+      let myListingHtml = '';
+      if (owned) {
+        const { data: myListing } = await supabase
+          .from('listings')
+          .select('id, ask_price')
+          .eq('collection_id', owned.id)
+          .eq('status', 'active')
+          .maybeSingle();
+
+        if (myListing) {
+          myListingHtml = `
+            <div class="resale-row">
+              <span class="edition-badge listed">Listed for ${myListing.ask_price} cr</span>
+              <button class="action-btn text-btn" id="cancelListingBtn" data-listing-id="${myListing.id}">Cancel listing</button>
+            </div>`;
+        } else {
+          myListingHtml = `
+            <div class="resale-row">
+              <input type="number" id="resalePriceInput" placeholder="Ask price (cr)" min="1" step="1">
+              <button class="action-btn" id="listBtn">List for resale</button>
+            </div>`;
+        }
+      }
+
+      // Other copies currently for sale by other collectors
+      const { data: otherListings } = await supabase
+        .from('listings')
+        .select('id, ask_price, collections!inner(id, edition_number, user_id, record_id, users(username))')
+        .eq('status', 'active')
+        .eq('collections.record_id', id);
+
+      const resaleListings = (otherListings ?? []).filter(l => l.collections.user_id !== user?.id);
+      let listingsHtml = '';
+      if (resaleListings.length) {
+        listingsHtml = `<div class="resale-listings">
+          <div class="profile-section-heading resale-heading">For Resale</div>
+          ${resaleListings.map(l => `
+            <div class="resale-listing-row" data-listing-id="${l.id}">
+              <span>#${l.collections.edition_number} · ${esc(l.collections.users?.username ? `@${l.collections.users.username}` : 'collector')}</span>
+              <button class="action-btn buy-listing-btn" data-listing-id="${l.id}" ${!user ? 'disabled' : ''}>
+                Buy for ${l.ask_price} cr
+              </button>
+            </div>`).join('')}
+        </div>`;
+      }
+
+      marketEl.innerHTML = myListingHtml + listingsHtml;
+
+      document.getElementById('listBtn')?.addEventListener('click', async () => {
+        const priceRaw = document.getElementById('resalePriceInput').value;
+        const askPrice = parseInt(priceRaw);
+        if (!priceRaw || isNaN(askPrice) || askPrice < 1) { setStatus('Enter a valid resale price.', 'error'); return; }
+        const { error } = await supabase.rpc('create_listing', { p_collection_id: owned.id, p_ask_price: askPrice });
+        if (error) setStatus(`Failed: ${error.message}`, 'error');
+        else await renderMarket();
+      });
+
+      document.getElementById('cancelListingBtn')?.addEventListener('click', async (e) => {
+        e.target.disabled = true;
+        const { error } = await supabase.rpc('cancel_listing', { p_listing_id: e.target.dataset.listingId });
+        if (error) setStatus(`Failed: ${error.message}`, 'error');
+        await renderMarket();
+      });
+
+      marketEl.querySelectorAll('.buy-listing-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          btn.textContent = 'Buying...';
+          const { error } = await supabase.rpc('buy_listing', { p_listing_id: btn.dataset.listingId });
+          if (error) setStatus(error.message.includes('Insufficient') ? 'Not enough credits.' : `Failed: ${error.message}`, 'error');
+          await renderMarket();
+        });
+      });
     };
 
-    await renderEdition();
+    await renderMarket();
   }
 
   const { data: urlData } = supabase.storage.from('records').getPublicUrl(record.file_path);
@@ -184,20 +306,9 @@ export async function recordView({ id }) {
   setStatus('Fetching groove...');
 
   try {
-    const resp = await fetch(svgUrl);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const buf = await resp.arrayBuffer();
-    const isGzip = new Uint8Array(buf, 0, 2)[0] === 0x1f && new Uint8Array(buf, 0, 2)[1] === 0x8b;
-    let svgText;
-    if (isGzip) {
-      const ds = new DecompressionStream('gzip');
-      const writer = ds.writable.getWriter();
-      writer.write(new Uint8Array(buf));
-      writer.close();
-      svgText = await new Response(ds.readable).text();
-    } else {
-      svgText = new TextDecoder().decode(buf);
-    }
+    if (!svgCache.has(id)) svgCache.set(id, fetchSvgText(svgUrl));
+    const svgText = await svgCache.get(id);
+    if (!svgText) throw new Error('Failed to fetch groove');
 
     const [
       { decodeFromSVG },

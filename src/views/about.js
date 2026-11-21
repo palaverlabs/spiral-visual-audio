@@ -23,8 +23,9 @@ export function aboutView() {
 
       <div class="about-section">
         <h2>Why</h2>
-        <p>Most audio formats separate sound from image. A JPEG of an album cover and an MP3 of the music are two different files that happen to travel together. Spiral Audio makes them the same thing.</p>
-        <p>A Spiral record is a complete artifact. It looks like music because it is music. The groove density, spacing, and texture are not decoration — they are the audio data itself.</p>
+        <p>Streaming gave everyone access to music and took away ownership. Your library lives on someone else's server, licensed to you until it isn't. Spiral Audio is built around the opposite idea — that people should own their music the way they own a record.</p>
+        <p>A Spiral record is a file you hold. You can store it, share it, pass it on. When an artist publishes a limited edition, the edition size is enforced and permanent. Collectors own a numbered artifact, not a license. The platform doesn't stand between the music and the person who has it.</p>
+        <p>The groove format is part of that. An SVG with audio baked into its geometry doesn't depend on a proprietary codec or a service staying online. It's a self-contained object — the audio is in the file, not behind an API.</p>
       </div>
 
       <div class="about-section">

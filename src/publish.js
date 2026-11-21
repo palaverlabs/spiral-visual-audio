@@ -26,7 +26,10 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
           </div>
         </div>
         <textarea id="publishDescription" placeholder="Description (optional)" maxlength="1000" rows="3"></textarea>
-        <input type="number" id="publishEdition" placeholder="Edition size (required)" min="1" step="1">
+        <div class="publish-edition-row">
+          <input type="number" id="publishEdition" placeholder="Edition size (required)" min="1" step="1">
+          <input type="number" id="publishPrice" placeholder="Price in credits (required)" min="1" step="1">
+        </div>
         <label class="publish-public-row">
           <input type="checkbox" id="publishPublic" checked>
           <span>Public</span>
@@ -83,9 +86,21 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
     const editionRaw = document.getElementById('publishEdition').value;
     const editionSize = parseInt(editionRaw);
     if (!editionRaw || isNaN(editionSize) || editionSize < 1) { setStatus('Edition size is required.', 'error'); return; }
+    if (editionSize > 10000) { setStatus('Edition size cannot exceed 10,000.', 'error'); return; }
+
+    const priceRaw = document.getElementById('publishPrice').value;
+    const price = parseInt(priceRaw);
+    if (!priceRaw || isNaN(price) || price < 1) { setStatus('Price is required.', 'error'); return; }
+    if (price > 100000) { setStatus('Price cannot exceed 100,000 credits.', 'error'); return; }
 
     const svg = getGrooveSVG();
     if (!svg) { setStatus('Generate a groove first.', 'error'); return; }
+
+    const rawBytes = new TextEncoder().encode(svg).length;
+    if (rawBytes > 50 * 1024 * 1024) {
+      setStatus(`Groove is too large (${(rawBytes / 1024 / 1024).toFixed(0)} MB). Try encoding at lower quality or shorter duration.`, 'error');
+      return;
+    }
 
     const btn = document.getElementById('publishBtn');
     btn.disabled = true;
@@ -147,6 +162,7 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
         file_size: blob.size,
         is_public: document.getElementById('publishPublic').checked,
         edition_size: editionSize,
+        price,
         cover_path: coverPath,
         thumbnail_path: thumbPath,
       });

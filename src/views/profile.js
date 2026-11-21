@@ -33,7 +33,7 @@ export async function profileView({ username }) {
 
   if (user.bio) document.getElementById('profileBio').textContent = user.bio;
 
-  const { data: records } = await supabase
+  const { data: records, error: recordsError } = await supabase
     .from('records')
     .select('id, title, artist, plays, created_at, thumbnail_path')
     .eq('user_id', user.id)
@@ -41,6 +41,10 @@ export async function profileView({ username }) {
     .order('created_at', { ascending: false });
 
   const grid = document.getElementById('profileGrid');
+  if (recordsError) {
+    grid.innerHTML = '<p class="feed-empty">Failed to load records.</p>';
+    return;
+  }
   if (!records?.length) {
     grid.innerHTML = '<p class="feed-empty">No public records yet.</p>';
     return;
@@ -71,13 +75,21 @@ export async function profileView({ username }) {
   // Collection section
   const { data: collected } = await supabase
     .from('collections')
-    .select('edition_number, records(id, title, artist, plays, edition_size, thumbnail_path)')
+    .select('id, edition_number, records(id, title, artist, plays, edition_size, thumbnail_path)')
     .eq('user_id', user.id)
     .order('collected_at', { ascending: false });
 
   if (collected?.length) {
+    const { data: valueRows } = await supabase
+      .from('collection_values')
+      .select('collection_id, current_value')
+      .in('collection_id', collected.map(c => c.id));
+    const values = Object.fromEntries((valueRows ?? []).map(v => [v.collection_id, v.current_value]));
+    const totalValue = collected.reduce((sum, c) => sum + (values[c.id] ?? 0), 0);
+
     const collectionEl = document.getElementById('profileCollection');
     collectionEl.innerHTML = `<h3 class="profile-section-heading">Collection</h3>
+      <div class="collection-value-total">Total collection value: <strong>${totalValue}</strong> credits</div>
       <div class="feed-grid" id="collectionGrid"></div>`;
 
     document.getElementById('collectionGrid').innerHTML = collected.map(c => {
@@ -88,12 +100,13 @@ export async function profileView({ username }) {
       const vinyl = thumbUrl
         ? `<img class="record-card-vinyl" src="${thumbUrl}" alt="">`
         : `<div class="record-card-vinyl"></div>`;
+      const value = values[c.id];
       return `<div class="record-card" data-id="${r.id}">
         ${vinyl}
         <div class="record-card-info">
           <div class="record-card-title">${esc(r.title)}</div>
           ${r.artist ? `<div class="record-card-artist">${esc(r.artist)}</div>` : ''}
-          <div class="record-card-meta">#${c.edition_number} of ${r.edition_size} · ${r.plays ?? 0} plays</div>
+          <div class="record-card-meta">#${c.edition_number} of ${r.edition_size}${value != null ? ` · ${value} cr` : ''} · ${r.plays ?? 0} plays</div>
         </div>
       </div>`;
     }).join('');
