@@ -28,54 +28,35 @@ export async function libraryView() {
     return;
   }
 
-  let records, collected, balance;
+  let records, balance, username;
   try {
-    const [r, c, u] = await Promise.all([
+    const [r, u] = await Promise.all([
       supabase.from('records')
         .select('id, title, artist, duration, plays, created_at, cover_path, thumbnail_path, is_public')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false }),
-      supabase.from('collections')
-        .select('id, edition_number, collected_at, records(id, title, artist, plays, edition_size, cover_path, thumbnail_path)')
-        .eq('user_id', user.id)
-        .order('collected_at', { ascending: false }),
-      supabase.from('users').select('balance').eq('id', user.id).single(),
+      supabase.from('users').select('balance, username').eq('id', user.id).single(),
     ]);
     if (r.error) throw r.error;
     records = r.data;
-    collected = c.data;
     balance = u.data?.balance ?? 0;
+    username = u.data?.username;
   } catch (err) {
     document.getElementById('libraryContent').innerHTML =
       `<p class="feed-empty">Failed to load library: ${err.message}</p>`;
     return;
   }
 
-  const validCollected = collected?.filter(c => c.records) ?? [];
-  let values = {};
-  if (validCollected.length) {
-    const { data: valueRows } = await supabase
-      .from('collection_values')
-      .select('collection_id, current_value')
-      .in('collection_id', validCollected.map(c => c.id));
-    values = Object.fromEntries((valueRows ?? []).map(v => [v.collection_id, v.current_value]));
-  }
-  const totalValue = validCollected.reduce((sum, c) => sum + (values[c.id] ?? 0), 0);
-
   let html = `<div class="library-balance">Balance: <strong>${balance}</strong> credits</div>`;
+  if (username) {
+    const u = encodeURIComponent(username);
+    html += `<p class="library-profile-link">Your collection, showcase, sales and royalties are on <a href="/u/${u}" data-route="/u/${u}">your profile</a>.</p>`;
+  }
   html += `<h3 class="profile-section-heading">My Records</h3>`;
   if (!records?.length) {
     html += `<p class="feed-empty">No records yet. <a href="/studio" data-route="/studio">Make something</a> in the studio.</p>`;
   } else {
     html += `<div class="feed-grid">${records.map(r => cardHtml(r, r.is_public ? null : 'Private')).join('')}</div>`;
-  }
-
-  if (validCollected.length) {
-    html += `<h3 class="profile-section-heading">My Collection</h3>`;
-    html += `<div class="collection-value-total">Total collection value: <strong>${totalValue}</strong> credits</div>`;
-    html += `<div class="feed-grid">${validCollected.map(c =>
-      cardHtml(c.records, `#${c.edition_number} of ${c.records.edition_size}`, values[c.id])
-    ).join('')}</div>`;
   }
 
   const content = document.getElementById('libraryContent');

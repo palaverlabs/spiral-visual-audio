@@ -102,3 +102,31 @@ export function priceChart(sales, originalPrice, { width = 560, height = 180 } =
     <text class="chart-axis" x="${width - pad.r}" y="${height - 6}" text-anchor="end">${fmtDate(t1)}</text>
   </svg>`;
 }
+
+// Modal with form fields. body = inner HTML of a <form>. Resolves FormData on submit, null on cancel.
+// onMount(form) can wire live previews.
+export function formDialog({ title, body, confirmLabel = 'Save', onMount }) {
+  return new Promise(resolve => {
+    const el = document.createElement('div');
+    el.className = 'modal-backdrop';
+    el.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+        <h3 class="modal-title">${esc(title)}</h3>
+        <form class="modal-form">${body}
+          <div class="modal-actions">
+            <button type="button" class="action-btn text-btn" data-act="cancel">Cancel</button>
+            <button type="submit" class="action-btn">${esc(confirmLabel)}</button>
+          </div>
+        </form>
+      </div>`;
+    const form = el.querySelector('form');
+    const done = v => { el.remove(); document.removeEventListener('keydown', onKey); resolve(v); };
+    const onKey = e => { if (e.key === 'Escape') done(null); };
+    el.addEventListener('click', e => { if (e.target === el || e.target.dataset.act === 'cancel') done(null); });
+    form.addEventListener('submit', e => { e.preventDefault(); done(new FormData(form)); });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(el);
+    onMount?.(form);
+    form.querySelector('input, textarea, select')?.focus();
+  });
+}

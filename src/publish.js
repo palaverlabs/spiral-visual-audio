@@ -171,7 +171,7 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
   });
 }
 
-function resizeImage(file, maxSize) {
+export function resizeImage(file, maxSize) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
