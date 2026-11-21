@@ -1475,3 +1475,67 @@ input[type="file"] { display: none; }
   .price-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .edition-number { font-size: 1.5rem; }
 }
+
+/* ── Market browse (step 3) ── */
+.release-card { display: flex; flex-direction: column; gap: 2px; text-decoration: none; color: inherit; }
+.release-card .record-card-vinyl { border-radius: 8px; object-fit: cover; }
+.release-card .edition-badge { align-self: flex-start; margin-top: 8px; }
+.release-card-price { display: flex; align-items: baseline; gap: 6px; margin-top: 6px; }
+.release-price { font-size: 0.9375rem; font-weight: 700; color: var(--text); }
+.release-card-stats { display: flex; flex-direction: column; gap: 1px; font-size: 0.6875rem; color: var(--text-muted); margin-top: 2px; }
+
+.sold-ticker {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 8px 12px;
+  margin-bottom: 18px;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  font-size: 0.75rem;
+  scrollbar-width: none;
+}
+.sold-ticker::-webkit-scrollbar { display: none; }
+.ticker-label { font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); font-weight: 700; }
+.ticker-item { color: var(--text-secondary); text-decoration: none; }
+.ticker-item:hover { color: var(--text); }
+
+.drops { margin-bottom: 22px; }
+.drops-rail { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x mandatory; }
+.drop-card {
+  flex: 0 0 150px;
+  scroll-snap-align: start;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 12px;
+  text-decoration: none;
+  color: inherit;
+}
+.drop-card:hover { border-color: var(--accent); }
+.drop-card .record-card-vinyl { border-radius: 8px; object-fit: cover; margin-bottom: 8px; }
+.drop-progress { height: 4px; border-radius: 2px; background: var(--panel-border); margin: 8px 0 6px; overflow: hidden; }
+.drop-progress span { display: block; height: 100%; background: var(--accent); }
+
+.market-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.market-filters input[type="search"],
+.market-filters input[type="number"],
+.market-filters select {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.8125rem;
+  padding: 7px 10px;
+  outline: none;
+  font-family: var(--font-ui);
+}
+.market-filters select option { background: #11161d; }
+.market-filters input[type="search"] { flex: 1 1 200px; min-width: 0; }
+.market-filters input:focus, .market-filters select:focus { border-color: var(--accent); }
+.price-range { display: flex; gap: 4px; }
+.price-range input { width: 84px; }
+.toggle { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-secondary); cursor: pointer; }
+.toggle input { accent-color: var(--accent); }
