@@ -171,21 +171,22 @@ export async function recordView({ id }) {
       html += ` <span class="edition-badge rarity ${rarity.class}">${rarity.label}</span>`;
       if (soldOut) html += ` <span class="edition-badge sold-out">Sold Out</span>`;
 
-      let owned = null;
+      let owned = [];
       if (user) {
         const { data } = await supabase
           .from('collections')
           .select('id, edition_number')
           .eq('record_id', id)
           .eq('user_id', user.id)
-          .maybeSingle();
-        owned = data;
+          .order('edition_number');
+        owned = data ?? [];
       }
 
-      if (owned) {
-        html += ` <span class="edition-badge owned">You own #${owned.edition_number}</span>`;
-      } else if (user && !soldOut) {
-        html += ` <button class="action-btn edition-collect-btn" id="collectBtn">Collect — ${record.price} cr</button>`;
+      if (owned.length) {
+        html += ` <span class="edition-badge owned">You own ${owned.map(o => `#${o.edition_number}`).join(', ')}</span>`;
+      }
+      if (user && !soldOut) {
+        html += ` <button class="action-btn edition-collect-btn" id="collectBtn">${owned.length ? 'Collect another' : 'Collect'} — ${record.price} cr</button>`;
       } else if (!user && !soldOut) {
         html += ` <span class="edition-sign-in"><a href="/auth">Sign in</a> to collect</span>`;
       }
@@ -211,29 +212,29 @@ export async function recordView({ id }) {
         });
       }
 
-      // Resale: this user's own copy, if they have one
+      // Resale: one row per copy this user owns
       let myListingHtml = '';
-      if (owned) {
-        const { data: myListing } = await supabase
+      if (owned.length) {
+        const { data: myListings } = await supabase
           .from('listings')
-          .select('id, ask_price')
-          .eq('collection_id', owned.id)
-          .eq('status', 'active')
-          .maybeSingle();
+          .select('id, ask_price, collection_id')
+          .in('collection_id', owned.map(o => o.id))
+          .eq('status', 'active');
+        const listingFor = new Map((myListings ?? []).map(l => [l.collection_id, l]));
 
-        if (myListing) {
-          myListingHtml = `
+        myListingHtml = owned.map(o => {
+          const l = listingFor.get(o.id);
+          return l ? `
             <div class="resale-row">
-              <span class="edition-badge listed">Listed for ${myListing.ask_price} cr</span>
-              <button class="action-btn text-btn" id="cancelListingBtn" data-listing-id="${myListing.id}">Cancel listing</button>
-            </div>`;
-        } else {
-          myListingHtml = `
+              <span class="edition-badge listed">#${o.edition_number} listed for ${l.ask_price} cr</span>
+              <button class="action-btn text-btn cancel-listing-btn" data-listing-id="${l.id}">Cancel listing</button>
+            </div>` : `
             <div class="resale-row">
-              <input type="number" id="resalePriceInput" placeholder="Ask price (cr)" min="1" step="1">
-              <button class="action-btn" id="listBtn">List for resale</button>
+              <span class="edition-badge owned">#${o.edition_number}</span>
+              <input type="number" class="resale-price-input" data-collection-id="${o.id}" placeholder="Ask price (cr)" min="1" step="1">
+              <button class="action-btn list-btn" data-collection-id="${o.id}">List for resale</button>
             </div>`;
-        }
+        }).join('');
       }
 
       // Other copies currently for sale by other collectors
@@ -260,20 +261,26 @@ export async function recordView({ id }) {
 
       marketEl.innerHTML = myListingHtml + listingsHtml;
 
-      document.getElementById('listBtn')?.addEventListener('click', async () => {
-        const priceRaw = document.getElementById('resalePriceInput').value;
-        const askPrice = parseInt(priceRaw);
-        if (!priceRaw || isNaN(askPrice) || askPrice < 1) { setStatus('Enter a valid resale price.', 'error'); return; }
-        const { error } = await supabase.rpc('create_listing', { p_collection_id: owned.id, p_ask_price: askPrice });
-        if (error) setStatus(`Failed: ${error.message}`, 'error');
-        else await renderMarket();
+      marketEl.querySelectorAll('.list-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const cid = btn.dataset.collectionId;
+          const priceRaw = marketEl.querySelector(`.resale-price-input[data-collection-id="${cid}"]`).value;
+          const askPrice = parseInt(priceRaw);
+          if (!priceRaw || isNaN(askPrice) || askPrice < 1) { setStatus('Enter a valid resale price.', 'error'); return; }
+          btn.disabled = true;
+          const { error } = await supabase.rpc('create_listing', { p_collection_id: cid, p_ask_price: askPrice });
+          if (error) setStatus(`Failed: ${error.message}`, 'error');
+          await renderMarket();
+        });
       });
 
-      document.getElementById('cancelListingBtn')?.addEventListener('click', async (e) => {
-        e.target.disabled = true;
-        const { error } = await supabase.rpc('cancel_listing', { p_listing_id: e.target.dataset.listingId });
-        if (error) setStatus(`Failed: ${error.message}`, 'error');
-        await renderMarket();
+      marketEl.querySelectorAll('.cancel-listing-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          const { error } = await supabase.rpc('cancel_listing', { p_listing_id: btn.dataset.listingId });
+          if (error) setStatus(`Failed: ${error.message}`, 'error');
+          await renderMarket();
+        });
       });
 
       marketEl.querySelectorAll('.buy-listing-btn').forEach(btn => {

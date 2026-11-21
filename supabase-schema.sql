@@ -1,3 +1,4 @@
+-- NOTE: new schema changes live in supabase/migrations/. This file is the original baseline.
 -- Run this in your Supabase SQL editor to set up the schema.
 
 -- Users table (extends auth.users)
