@@ -1,5 +1,6 @@
 import { supabase } from '../supabase.js';
 import { navigate } from '../router.js';
+import { unpackGroove } from '../groovepack.js';
 
 // Prefetch cache: id → Promise<string|null>
 const svgCache = new Map();
@@ -7,17 +8,7 @@ const svgCache = new Map();
 async function fetchSvgText(url) {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const buf = await resp.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  const isGzip = bytes[0] === 0x1f && bytes[1] === 0x8b;
-  if (isGzip) {
-    const ds = new DecompressionStream('gzip');
-    const writer = ds.writable.getWriter();
-    writer.write(bytes);
-    writer.close();
-    return new Response(ds.readable).text();
-  }
-  return new TextDecoder().decode(buf);
+  return unpackGroove(await resp.arrayBuffer());
 }
 
 function prefetchSvg(record) {

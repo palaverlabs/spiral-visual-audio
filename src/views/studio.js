@@ -1,4 +1,5 @@
 import { encodeToSVG, decodeFromSVG } from '../codec.js';
+import { unpackGroove } from '../groovepack.js';
 import { Renderer } from '../renderer.js';
 import { PlaybackManager } from '../playback.js';
 import { SkinManager, SKINS } from '../skin.js';
@@ -444,19 +445,7 @@ class App {
           const { data: urlData } = supabase.storage.from('records').getPublicUrl(filePath);
           const resp = await fetch(urlData.publicUrl);
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          const buf = await resp.arrayBuffer();
-          const bytes = new Uint8Array(buf);
-          const isGzip = bytes[0] === 0x1f && bytes[1] === 0x8b;
-          let svgText;
-          if (isGzip) {
-            const ds = new DecompressionStream('gzip');
-            const writer = ds.writable.getWriter();
-            writer.write(bytes);
-            writer.close();
-            svgText = await new Response(ds.readable).text();
-          } else {
-            svgText = new TextDecoder().decode(buf);
-          }
+          const svgText = await unpackGroove(await resp.arrayBuffer());
           await this._applyGrooveSVG(svgText, title);
         } catch (err) {
           this._setStatus(`Failed to load: ${err.message}`, 'error');

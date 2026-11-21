@@ -1,5 +1,6 @@
 import { supabase } from './supabase.js';
 import { navigate } from './router.js';
+import { packGroove } from './groovepack.js';
 
 export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThumbBlob) {
   container.innerHTML = `
@@ -96,12 +97,6 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
     const svg = getGrooveSVG();
     if (!svg) { setStatus('Generate a groove first.', 'error'); return; }
 
-    const rawBytes = new TextEncoder().encode(svg).length;
-    if (rawBytes > 50 * 1024 * 1024) {
-      setStatus(`Groove is too large (${(rawBytes / 1024 / 1024).toFixed(0)} MB). Try encoding at lower quality or shorter duration.`, 'error');
-      return;
-    }
-
     const btn = document.getElementById('publishBtn');
     btn.disabled = true;
     btn.textContent = 'UPLOADING...';
@@ -109,19 +104,17 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
 
     try {
       const recordId = crypto.randomUUID();
-      const filePath = `${user.id}/${recordId}.svg`;
-      const raw = new TextEncoder().encode(svg);
-      const cs = new CompressionStream('gzip');
-      const writer = cs.writable.getWriter();
-      writer.write(raw);
-      writer.close();
-      const compressed = await new Response(cs.readable).arrayBuffer();
-      const blob = new Blob([compressed], { type: 'image/svg+xml' });
+      const filePath = `${user.id}/${recordId}.spg`;
+      setStatus('Compressing groove...');
+      const blob = new Blob([await packGroove(svg)], { type: 'application/octet-stream' });
+      if (blob.size > 50 * 1024 * 1024) {
+        throw new Error(`Groove is too large (${(blob.size / 1024 / 1024).toFixed(0)} MB compressed, max 50 MB). Try a shorter track or lower quality.`);
+      }
 
       setStatus(`Uploading ${(blob.size / 1024 / 1024).toFixed(1)} MB...`);
       const { error: uploadError } = await supabase.storage
         .from('records')
-        .upload(filePath, blob, { contentType: 'image/svg+xml' });
+        .upload(filePath, blob, { contentType: 'application/octet-stream' });
       if (uploadError) throw uploadError;
 
       // Custom cover art — resize to 600x600 max before upload
