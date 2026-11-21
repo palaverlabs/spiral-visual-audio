@@ -1,6 +1,7 @@
 // Edition page /r/:id/e/:n — one numbered copy: current owner, listing, and its full provenance from the ledger.
 import { supabase } from '../supabase.js';
 import { esc, rarityTier, cr, timeAgo, userLink, specialBadge, publicUrl, getFees, splitSale, confirmDialog } from '../ui.js';
+import { makeOfferDialog, acceptOfferDialog } from '../offers.js';
 
 export async function editionView({ id, n }) {
   const num = parseInt(n);
@@ -16,15 +17,21 @@ export async function editionView({ id, n }) {
   const fees = await getFees();
 
   const render = async () => {
-    const [{ data: record }, { data: copy }, { data: txs }, { data: chainBreak }] = await Promise.all([
-      supabase.from('records').select('id, title, artist, edition_size, cover_path, thumbnail_path, users(username)').eq('id', id).single(),
+    const [{ data: record }, { data: copy }, { data: txs }, { data: chainBreak }, { data: offerRows }] = await Promise.all([
+      supabase.from('records').select('id, title, artist, edition_size, cover_path, thumbnail_path, users!records_user_id_fkey(username)').eq('id', id).single(),
       supabase.from('collections').select('id, user_id, users(username)').eq('record_id', id).eq('edition_number', num).maybeSingle(),
       supabase.from('transactions')
         .select('id, type, price, royalty_amount, created_at, hash, buyer:users!transactions_buyer_id_fkey(username), seller:users!transactions_seller_id_fkey(username)')
         .eq('record_id', id).eq('edition_number', num)
         .order('created_at', { ascending: false }),
       supabase.rpc('verify_ledger'),
+      supabase.from('offers')
+        .select('id, price, edition_number, expires_at, buyer_id, buyer:users!offers_buyer_id_fkey(username)')
+        .eq('record_id', id).eq('status', 'active').gt('expires_at', new Date().toISOString())
+        .or(`edition_number.is.null,edition_number.eq.${num}`)
+        .order('price', { ascending: false }),
     ]);
+    const offers = offerRows ?? [];
     if (!record || !record.edition_size || !(num >= 1 && num <= record.edition_size)) { setStatus('Edition not found.', 'error'); return; }
 
     let listing = null;
@@ -60,7 +67,19 @@ export async function editionView({ id, n }) {
         <div class="price-cell"><span class="price-label">Times sold</span><span class="price-value">${txs?.length ?? 0}</span></div>
         <div class="price-cell"><span class="price-label">Royalties paid</span><span class="price-value">${cr(royalties)}</span></div>
       </div>
-      ${listing && user && listing.seller_id !== user.id ? `<div class="market-actions"><button class="action-btn" id="editionBuyBtn">Buy #${num} — ${cr(listing.ask_price)}</button><span class="balance-note">Balance ${cr(me?.balance)}</span></div>` : ''}
+      ${user && copy ? `<div class="market-actions">
+        ${listing && listing.seller_id !== user.id ? `<button class="action-btn" id="editionBuyBtn">Buy #${num} — ${cr(listing.ask_price)}</button>` : ''}
+        ${copy.user_id !== user.id ? `<button class="action-btn text-btn" id="editionOfferBtn">Make offer on #${num}</button>` : ''}
+        <span class="balance-note">Balance ${cr(me?.balance)}</span>
+      </div>` : ''}
+      ${offers.length ? `<div class="market-section">
+        <div class="profile-section-heading">Offers that can buy this copy</div>
+        <table class="market-table"><thead><tr><th>Offer</th><th>For</th><th>From</th><th></th></tr></thead>
+        <tbody>${offers.map(o => `<tr>
+          <td>${cr(o.price)}</td><td>${o.edition_number ? `#${o.edition_number}` : 'Any edition'}</td><td>${userLink(o.buyer)}</td>
+          <td>${o.buyer_id === user?.id ? `<button class="action-btn text-btn ed-cancel-offer" data-offer-id="${o.id}">Cancel</button>`
+            : copy?.user_id === user?.id ? `${o.edition_number ? `<button class="action-btn text-btn ed-decline-offer" data-offer-id="${o.id}">Decline</button> ` : ''}<button class="action-btn ed-accept-offer" data-offer-id="${o.id}">Accept</button>` : ''}</td>
+        </tr>`).join('')}</tbody></table></div>` : ''}
       <div class="market-section">
         <div class="profile-section-heading">Provenance</div>
         ${txs?.length ? `<table class="market-table">
@@ -73,6 +92,25 @@ export async function editionView({ id, n }) {
           </tr>`).join('')}</tbody></table>`
           : `<div class="chart-empty">No ledger history for this copy yet</div>`}
       </div>`;
+
+    const act = async (rpc, args, ok) => {
+      const { error } = await supabase.rpc(rpc, args);
+      await render();
+      if (error) setStatus(error.message.includes('Insufficient') ? 'Not enough credits.' : `Failed: ${error.message}`, 'error');
+      else if (ok) setStatus(ok, 'success');
+    };
+    document.getElementById('editionOfferBtn')?.addEventListener('click', async () => {
+      const res = await makeOfferDialog({ record, fixedEdition: num, balance: me?.balance, topOffer: offers[0]?.price, floor: listing?.ask_price });
+      if (res) await act('place_offer', { p_record_id: id, p_price: res.price, p_edition: num, p_days: res.days }, `Offer placed on #${num}.`);
+    });
+    document.querySelectorAll('.ed-cancel-offer').forEach(b => b.addEventListener('click', () => act('cancel_offer', { p_offer_id: b.dataset.offerId }, 'Offer cancelled, credits returned.')));
+    document.querySelectorAll('.ed-decline-offer').forEach(b => b.addEventListener('click', () => act('decline_offer', { p_offer_id: b.dataset.offerId }, 'Offer declined.')));
+    document.querySelectorAll('.ed-accept-offer').forEach(b => b.addEventListener('click', async () => {
+      const offer = offers.find(o => o.id === b.dataset.offerId);
+      const listingFor = listing ? new Map([[copy.id, listing]]) : new Map();
+      const res = await acceptOfferDialog({ offer, record, copies: [{ id: copy.id, edition_number: num }], fees, listingFor });
+      if (res) await act('accept_offer', { p_offer_id: offer.id, p_collection_id: copy.id }, `Sold #${num} for ${cr(offer.price)}!`);
+    }));
 
     document.getElementById('editionBuyBtn')?.addEventListener('click', async (e) => {
       const s = splitSale(listing.ask_price, 'secondary', fees);

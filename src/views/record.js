@@ -1,7 +1,8 @@
 import { supabase } from '../supabase.js';
 import { navigate } from '../router.js';
 import { unpackGroove } from '../groovepack.js';
-import { esc, rarityTier, cr, timeAgo, userLink, specialBadge, getFees, splitSale, confirmDialog, priceChart } from '../ui.js';
+import { esc, rarityTier, cr, timeAgo, userLink, specialBadge, getFees, splitSale, confirmDialog, priceChart, formDialog } from '../ui.js';
+import { makeOfferDialog, acceptOfferDialog, eligibleCopies } from '../offers.js';
 
 // Prefetch cache: id → Promise<string|null>
 const svgCache = new Map();
@@ -23,6 +24,10 @@ function prefetchSvg(record) {
 
 const SVG_PLAY = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>`;
 const SVG_PAUSE = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="5" y="4" width="4" height="16"/><rect x="15" y="4" width="4" height="16"/></svg>`;
+const timeLeft = ts => {
+  const h = (new Date(ts) - Date.now()) / 3600e3;
+  return h <= 0 ? 'expired' : h < 1 ? `${Math.ceil(h * 60)}m left` : h < 48 ? `${Math.round(h)}h left` : `${Math.round(h / 24)}d left`;
+};
 const SVG_PREV = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="5" y="4" width="3" height="16"/><polygon points="19,4 8,12 19,20"/></svg>`;
 const SVG_NEXT = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="5,4 16,12 5,20"/><rect x="16" y="4" width="3" height="16"/></svg>`;
 
@@ -66,7 +71,7 @@ export async function recordView({ id }) {
 
   const { data: record, error } = await supabase
     .from('records')
-    .select('*, users(username), cover_path, description, album, genre')
+    .select('*, users!records_user_id_fkey(username), cover_path, description, album, genre')
     .eq('id', id)
     .single();
 
@@ -152,7 +157,7 @@ export async function recordView({ id }) {
     let data = null;
 
     const load = async () => {
-      const [stats, listings, owners, txs, me] = await Promise.all([
+      const [stats, listings, owners, txs, me, offers, want] = await Promise.all([
         supabase.from('release_market_stats').select('*').eq('record_id', id).maybeSingle(),
         supabase.from('listings')
           .select('id, ask_price, status, created_at, resolved_at, seller_id, collections!inner(id, edition_number, record_id), seller:users!listings_seller_id_fkey(username)')
@@ -166,6 +171,11 @@ export async function recordView({ id }) {
           .order('created_at', { ascending: false })
           .limit(200),
         user ? supabase.from('users').select('balance').eq('id', user.id).single() : Promise.resolve({ data: null }),
+        supabase.from('offers')
+          .select('id, price, edition_number, expires_at, created_at, buyer_id, buyer:users!offers_buyer_id_fkey(username)')
+          .eq('record_id', id).eq('status', 'active').gt('expires_at', new Date().toISOString())
+          .order('price', { ascending: false }),
+        user ? supabase.from('wants').select('max_price').eq('user_id', user.id).eq('record_id', id).maybeSingle() : Promise.resolve({ data: null }),
       ]);
       const allListings = listings.data ?? [];
       data = {
@@ -175,6 +185,8 @@ export async function recordView({ id }) {
         owners: owners.data ?? [],
         txs: txs.data ?? [],
         balance: me.data?.balance ?? null,
+        offers: offers.data ?? [],
+        want: want.data ?? null,
       };
       data.owned = user ? data.owners.filter(o => o.user_id === user.id) : [];
       data.myListingFor = new Map(data.active.filter(l => l.seller_id === user?.id).map(l => [l.collections.id, l]));
@@ -191,6 +203,13 @@ export async function recordView({ id }) {
       const floor = buyable[0] ?? null;
       const lastSale = stats.last_sale_price;
       const premium = lastSale != null && record.price ? Math.round((lastSale - record.price) / record.price * 100) : null;
+      // Best offer you could accept right now with one of your copies.
+      let sellNow = null;
+      for (const o of data.offers) {
+        if (o.buyer_id === user?.id) continue;
+        const copies = eligibleCopies(o, owned, myListingFor);
+        if (copies.length) { sellNow = { offer: o, copy: copies[0] }; break; }
+      }
 
       // 1. Edition line
       let html = `<div class="record-edition">
@@ -203,7 +222,7 @@ export async function recordView({ id }) {
       // 2. Price strip
       html += `<div class="price-strip">
         <div class="price-cell"><span class="price-label">Lowest ask</span><span class="price-value">${cr(stats.floor_ask)}</span></div>
-        <div class="price-cell"><span class="price-label">Highest offer</span><span class="price-value muted">—</span><span class="price-sub">Offers coming soon</span></div>
+        <div class="price-cell"><span class="price-label">Highest offer</span><span class="price-value">${cr(data.offers[0]?.price)}</span>${data.offers.length ? `<span class="price-sub">${data.offers.length} ${data.offers.length === 1 ? 'offer' : 'offers'}</span>` : ''}</div>
         <div class="price-cell"><span class="price-label">Last sale</span><span class="price-value">${cr(lastSale)}</span>${stats.last_sale_at ? `<span class="price-sub">${timeAgo(stats.last_sale_at)}</span>` : ''}</div>
         <div class="price-cell"><span class="price-label">Original</span><span class="price-value">${cr(record.price)}</span>${premium != null ? `<span class="price-sub ${premium >= 0 ? 'up' : 'down'}">${premium >= 0 ? '+' : ''}${premium}% last sale</span>` : ''}</div>
       </div>`;
@@ -215,6 +234,11 @@ export async function recordView({ id }) {
       } else {
         if (left > 0 && record.price) html += `<button class="action-btn" id="collectBtn">Collect #${minted + 1} from artist — ${cr(record.price)}</button>`;
         if (floor) html += `<button class="action-btn" id="buyNowBtn">Buy now #${floor.collections.edition_number} — ${cr(floor.ask_price)}</button>`;
+        if (minted > 0) html += `<button class="action-btn text-btn" id="makeOfferBtn">Make offer</button>`;
+        if (sellNow) html += `<button class="action-btn" id="sellNowBtn">Sell now #${sellNow.copy.edition_number} — ${cr(sellNow.offer.price)}</button>`;
+        html += data.want
+          ? `<button class="action-btn text-btn" id="unwantBtn" title="Remove from wantlist">On your wantlist${data.want.max_price ? ` · under ${cr(data.want.max_price)}` : ''} ✕</button>`
+          : `<button class="action-btn text-btn" id="wantBtn">Add to wantlist</button>`;
         if (balance != null) html += `<span class="balance-note">Balance ${cr(balance)}</span>`;
       }
       html += `</div>`;
@@ -267,6 +291,28 @@ export async function recordView({ id }) {
           : `<div class="chart-empty">${ui.filter ? `No listing for #${esc(ui.filter)}` : 'No copies listed'}</div>`}
       </div>`;
 
+      // 6b. Offers
+      if (data.offers.length) {
+        html += `<div class="market-section">
+          <div class="section-head"><div class="profile-section-heading">Offers (${data.offers.length})</div></div>
+          <table class="market-table">
+            <thead><tr><th>Offer</th><th>Edition</th><th>From</th><th>Expires</th><th></th></tr></thead>
+            <tbody>${data.offers.map(o => {
+              const mine = o.buyer_id === user?.id;
+              const canAccept = !mine && eligibleCopies(o, owned, myListingFor).length > 0;
+              const canDecline = canAccept && o.edition_number != null;
+              return `<tr>
+                <td>${cr(o.price)}</td>
+                <td>${o.edition_number ? `<a class="edition-link" href="/r/${id}/e/${o.edition_number}" data-route="/r/${id}/e/${o.edition_number}">#${o.edition_number}</a>` : 'Any'}</td>
+                <td>${userLink(o.buyer)}</td>
+                <td>${timeLeft(o.expires_at)}</td>
+                <td>${mine ? `<button class="action-btn text-btn cancel-offer-btn" data-offer-id="${o.id}">Cancel</button>`
+                  : canAccept ? `${canDecline ? `<button class="action-btn text-btn decline-offer-btn" data-offer-id="${o.id}">Decline</button> ` : ''}<button class="action-btn accept-offer-btn" data-offer-id="${o.id}">Accept</button>` : ''}</td>
+              </tr>`;
+            }).join('')}</tbody></table>
+        </div>`;
+      }
+
       // 7. Supporters wall
       if (owners.length) {
         html += `<div class="market-section"><div class="profile-section-heading">Supporters</div>
@@ -289,7 +335,7 @@ export async function recordView({ id }) {
       }
 
       marketEl.innerHTML = html;
-      bind({ floor, minted });
+      bind({ floor, minted, sellNow });
     };
 
     const refresh = async () => { await load(); draw(); };
@@ -299,8 +345,57 @@ export async function recordView({ id }) {
       error.message.includes('Insufficient') ? 'Not enough credits.' :
       `Failed: ${error.message}`, 'error');
 
-    const bind = ({ floor, minted }) => {
+    const bind = ({ floor, minted, sellNow }) => {
       const balance = data.balance;
+
+      const acceptOffer = async (offer) => {
+        const res = await acceptOfferDialog({ offer, record, copies: eligibleCopies(offer, data.owned, data.myListingFor), fees, listingFor: data.myListingFor });
+        if (!res) return;
+        const { error } = await supabase.rpc('accept_offer', { p_offer_id: offer.id, p_collection_id: res.collectionId });
+        if (error) fail(error); else setStatus(`Sold #${res.editionNumber} for ${cr(offer.price)}!`, 'success');
+        await refresh();
+      };
+      document.getElementById('sellNowBtn')?.addEventListener('click', () => acceptOffer(sellNow.offer));
+      marketEl.querySelectorAll('.accept-offer-btn').forEach(btn => btn.addEventListener('click', () =>
+        acceptOffer(data.offers.find(o => o.id === btn.dataset.offerId))));
+      marketEl.querySelectorAll('.decline-offer-btn').forEach(btn => btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        const { error } = await supabase.rpc('decline_offer', { p_offer_id: btn.dataset.offerId });
+        if (error) fail(error);
+        await refresh();
+      }));
+      marketEl.querySelectorAll('.cancel-offer-btn').forEach(btn => btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        const { error } = await supabase.rpc('cancel_offer', { p_offer_id: btn.dataset.offerId });
+        if (error) fail(error); else setStatus('Offer cancelled, credits returned.', 'success');
+        await refresh();
+      }));
+
+      document.getElementById('makeOfferBtn')?.addEventListener('click', async () => {
+        const mintedNumbers = data.owners.filter(o => o.user_id !== user.id).map(o => o.edition_number);
+        const res = await makeOfferDialog({ record, editions: mintedNumbers, balance, topOffer: data.offers[0]?.price, floor: data.stats.floor_ask });
+        if (!res) return;
+        const { error } = await supabase.rpc('place_offer', { p_record_id: id, p_price: res.price, p_edition: res.edition, p_days: res.days });
+        if (error) fail(error); else setStatus(`Offer placed: ${cr(res.price)} held until it's accepted, cancelled or expires.`, 'success');
+        await refresh();
+      });
+
+      document.getElementById('wantBtn')?.addEventListener('click', async () => {
+        const fd = await formDialog({
+          title: 'Add to wantlist',
+          confirmLabel: 'Add',
+          body: `<label class="form-field">Alert me when a copy is listed at or under (cr, optional)<input name="max" type="number" min="1" step="1" placeholder="Any price"></label>`,
+        });
+        if (!fd) return;
+        const max = parseInt(fd.get('max'));
+        const { error } = await supabase.from('wants').upsert({ user_id: user.id, record_id: id, max_price: max > 0 ? max : null });
+        if (error) fail(error);
+        await refresh();
+      });
+      document.getElementById('unwantBtn')?.addEventListener('click', async () => {
+        await supabase.from('wants').delete().eq('user_id', user.id).eq('record_id', id);
+        await refresh();
+      });
 
       document.getElementById('collectBtn')?.addEventListener('click', async (e) => {
         const price = record.price;

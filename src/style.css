@@ -1627,3 +1627,22 @@ div.banner-tile { background: radial-gradient(circle at 38% 35%, #2a2a2a, #111 6
 }
 .profile-stats { background: #0d1117; gap: 0; }
 .profile-stats .price-cell { box-shadow: 0 0 0 0.5px var(--panel-border); }
+
+/* ── Offers, follows, notifications (step 5) ── */
+[hidden] { display: none !important; }
+.nav-bell { position: relative; display: inline-flex; align-items: center; margin-right: 8px; }
+.nav-bell-count {
+  position: absolute; top: -6px; right: -8px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
+  background: var(--status-error); color: #fff; font-size: 0.625rem; font-weight: 700; line-height: 16px; text-align: center;
+}
+.follow-counts { font-size: 0.75rem; color: var(--text-muted); margin-top: 6px; }
+.follow-counts strong { color: var(--text); }
+#followBtn { align-self: flex-end; margin-bottom: 4px; }
+.notif-list li.unread span:first-child { color: var(--text); font-weight: 600; }
+.notif-list li.unread::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; align-self: center; }
+.modal-form .modal-rows { margin-top: 4px; }
+.form-field select {
+  background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 8px; color: var(--text);
+  font-size: 0.875rem; padding: 8px 10px; font-family: var(--font-ui); outline: none;
+}
+.form-field select option { background: #11161d; }

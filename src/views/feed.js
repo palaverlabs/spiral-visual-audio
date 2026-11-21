@@ -31,7 +31,7 @@ export async function feedView() {
   const loadMore = async () => {
     const { data, error } = await supabase
       .from('records')
-      .select('id, title, artist, duration, plays, created_at, cover_path, thumbnail_path, users(username)')
+      .select('id, title, artist, duration, plays, created_at, cover_path, thumbnail_path, users!records_user_id_fkey(username)')
       .eq('is_public', true)
       .order('created_at', { ascending: false })
       .range(offset, offset + PAGE_SIZE - 1);

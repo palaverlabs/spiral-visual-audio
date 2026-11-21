@@ -3,6 +3,7 @@
 import { supabase } from '../supabase.js';
 import { esc, rarityTier, publicUrl, cr, timeAgo, userLink, specialBadge, getFees, splitSale, formDialog } from '../ui.js';
 import { resizeImage } from '../publish.js';
+import { acceptOfferDialog, eligibleCopies } from '../offers.js';
 
 const TIERS = ['Ultra Rare', 'Rare', 'Limited', 'Open Edition'];
 const COLLECTION_SORTS = {
@@ -37,9 +38,10 @@ export async function profileView({ username }) {
 
   const load = async () => {
     const pid = profile.id;
-    const [owned, values, pins, releases, txs, artistTxs, listings, me] = await Promise.all([
+    const nowIso = new Date().toISOString();
+    const [owned, values, pins, releases, txs, artistTxs, listings, me, followers, following, amFollowing, wants, myOffers] = await Promise.all([
       supabase.from('collections')
-        .select('id, edition_number, collected_at, record_id, records(id, title, artist, genre, edition_size, cover_path, thumbnail_path, price, user_id, users(username))')
+        .select('id, edition_number, collected_at, record_id, records(id, title, artist, genre, edition_size, cover_path, thumbnail_path, price, user_id, users!records_user_id_fkey(username))')
         .eq('user_id', pid),
       supabase.from('collection_values').select('collection_id, current_value').eq('user_id', pid),
       supabase.from('profile_pins').select('slot, collection_id').eq('user_id', pid).order('slot'),
@@ -57,12 +59,28 @@ export async function profileView({ username }) {
       supabase.from('listings')
         .select('id, ask_price, status, created_at, collection_id, collections(edition_number, record_id, records(id, title, artist, edition_size, cover_path, thumbnail_path))')
         .eq('seller_id', pid).order('created_at', { ascending: false }).limit(200),
-      isOwner ? supabase.from('users').select('balance').eq('id', pid).single() : Promise.resolve({ data: null }),
+      isOwner ? supabase.from('users').select('balance, held_balance').eq('id', pid).single() : Promise.resolve({ data: null }),
+      supabase.from('follows').select('*', { count: 'exact', head: true }).eq('followee_id', pid),
+      supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', pid),
+      user && !isOwner ? supabase.from('follows').select('followee_id').eq('follower_id', user.id).eq('followee_id', pid).maybeSingle() : Promise.resolve({ data: null }),
+      supabase.from('wants').select('record_id, max_price, created_at, records(id, title, artist, edition_size, cover_path, thumbnail_path)').eq('user_id', pid).order('created_at', { ascending: false }),
+      isOwner ? supabase.from('offers')
+        .select('id, price, edition_number, expires_at, created_at, record_id, records(id, title)')
+        .eq('buyer_id', pid).eq('status', 'active').gt('expires_at', nowIso).order('created_at', { ascending: false })
+        : Promise.resolve({ data: [] }),
     ]);
 
     const valueOf = Object.fromEntries((values.data ?? []).map(v => [v.collection_id, v.current_value]));
     const ownedRows = (owned.data ?? []).filter(c => c.records);
-    const recordIds = [...new Set([...ownedRows.map(c => c.record_id), ...(releases.data ?? []).map(r => r.id)])];
+    const wantRows = (wants.data ?? []).filter(w => w.records);
+    const recordIds = [...new Set([...ownedRows.map(c => c.record_id), ...(releases.data ?? []).map(r => r.id), ...wantRows.map(w => w.record_id)])];
+    const ownedRecordIds = [...new Set(ownedRows.map(c => c.record_id))];
+    const { data: incoming } = isOwner && ownedRecordIds.length
+      ? await supabase.from('offers')
+          .select('id, price, edition_number, expires_at, created_at, record_id, buyer_id, buyer:users!offers_buyer_id_fkey(username), records(id, title)')
+          .in('record_id', ownedRecordIds).eq('status', 'active').gt('expires_at', nowIso).neq('buyer_id', pid)
+          .order('price', { ascending: false })
+      : { data: [] };
     const { data: statRows } = recordIds.length
       ? await supabase.from('release_market_stats').select('*').in('record_id', recordIds)
       : { data: [] };
@@ -95,7 +113,18 @@ export async function profileView({ username }) {
       listings: listings.data ?? [],
       stats,
       balance: me.data?.balance ?? null,
+      held: me.data?.held_balance ?? 0,
+      followers: followers.count ?? 0,
+      following: following.count ?? 0,
+      amFollowing: !!amFollowing.data,
+      wants: wantRows,
+      offersMade: myOffers.data ?? [],
+      offersIn: [],
     };
+    const listingFor = new Map(copies.filter(c => c.listing).map(c => [c.id, c.listing]));
+    d.listingFor = listingFor;
+    d.offersIn = (incoming ?? []).map(o => ({ ...o, copies: eligibleCopies(o, copies.filter(c => c.record_id === o.record_id), listingFor) }))
+      .filter(o => o.copies.length);
     d.isArtist = d.releases.length > 0;
     d.isCollector = copies.length > 0;
     if (!ui.tab) ui.tab = d.isArtist && !d.isCollector ? 'releases' : 'collection';
@@ -129,6 +158,8 @@ export async function profileView({ username }) {
       ['collection', `Collection (${copies.length})`],
       d.isArtist && ['releases', `Releases (${releases.length})`],
       ['forsale', `For sale (${copies.filter(c => c.listing).length})`],
+      (d.wants.length || isOwner) && ['wantlist', `Wantlist (${d.wants.length})`],
+      isOwner && ['offers', `Offers${d.offersIn.length ? ` (${d.offersIn.length})` : ''}`],
       ['activity', 'Activity'],
       ['stats', 'Stats'],
       isOwner && (d.isArtist || d.txs.some(t => t.seller_id === profile.id)) && ['earnings', 'Earnings'],
@@ -144,7 +175,9 @@ export async function profileView({ username }) {
             <h2>${esc(name)}</h2>
             ${profile.display_name ? `<div class="muted">@${esc(profile.username)}</div>` : ''}
             <div class="profile-badges">${badges}</div>
+            <div class="follow-counts"><strong>${d.followers}</strong> ${d.followers === 1 ? 'follower' : 'followers'} · <strong>${d.following}</strong> following</div>
           </div>
+          ${user && !isOwner ? `<button class="action-btn${d.amFollowing ? ' text-btn' : ''}" id="followBtn">${d.amFollowing ? 'Following' : 'Follow'}</button>` : ''}
           ${isOwner ? `<div class="profile-owner-actions">
             <button class="action-btn text-btn" id="editProfileBtn">Edit profile</button>
             ${copies.length ? `<button class="action-btn text-btn" id="editShowcaseBtn">Edit showcase</button>` : ''}
@@ -159,7 +192,7 @@ export async function profileView({ username }) {
           ${d.isArtist ? `<div class="price-cell"><span class="price-label">Royalties earned</span><span class="price-value">${cr(royalties)}</span></div>` : ''}
           <div class="price-cell"><span class="price-label">Member since</span><span class="price-value">${new Date(profile.created_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</span></div>
         </div>
-        ${isOwner && d.balance != null ? `<div class="balance-note profile-balance">Your balance: ${cr(d.balance)}</div>` : ''}
+        ${isOwner && d.balance != null ? `<div class="balance-note profile-balance">Your balance: ${cr(d.balance)}${d.held ? ` · ${cr(d.held)} held in open offers` : ''}</div>` : ''}
 
         ${sc.list.length ? `<section class="market-section showcase">
           <div class="profile-section-heading">${sc.isPinned ? 'Showcase' : 'Top of the shelf'}</div>
@@ -183,7 +216,7 @@ export async function profileView({ username }) {
 
   const drawTab = () => {
     const el = document.getElementById('profileTab');
-    const renderers = { collection: tabCollection, releases: tabReleases, forsale: tabForSale, activity: tabActivity, stats: tabStats, earnings: tabEarnings };
+    const renderers = { collection: tabCollection, releases: tabReleases, forsale: tabForSale, wantlist: tabWantlist, offers: tabOffers, activity: tabActivity, stats: tabStats, earnings: tabEarnings };
     el.innerHTML = renderers[ui.tab]();
     bindTab(el);
   };
@@ -298,6 +331,53 @@ export async function profileView({ username }) {
       </tr>`).join('')}</tbody></table></div>`;
   };
 
+  // ── Wantlist ──
+  const tabWantlist = () => {
+    if (!d.wants.length) return `<div class="empty-state"><p>Nothing on ${isOwner ? 'your' : 'this'} wantlist yet.${isOwner ? ' Use "Add to wantlist" on any release to get an alert when a copy is listed under your price.' : ''}</p></div>`;
+    return `<div class="feed-grid">${d.wants.map(w => {
+      const r = w.records;
+      const s = d.stats[w.record_id] ?? {};
+      const hit = s.floor_ask != null && (w.max_price == null || s.floor_ask <= w.max_price);
+      return `<div class="record-card release-card shelf-card">
+        <a class="shelf-link" href="/r/${r.id}" data-route="/r/${r.id}">
+          ${coverImg(r)}
+          <div class="record-card-title">${esc(r.title)}</div>
+          ${r.artist ? `<div class="record-card-artist">${esc(r.artist)}</div>` : ''}
+          <div class="release-card-stats">
+            <span>Floor ${cr(s.floor_ask)}</span>
+            <span>Target ${w.max_price ? `under ${cr(w.max_price)}` : 'any price'}</span>
+          </div>
+        </a>
+        <div class="shelf-foot">${hit ? '<span class="edition-badge owned">Available at your price</span>' : ''}
+          ${isOwner ? `<button class="action-btn text-btn unwant-btn" data-record-id="${r.id}">Remove</button>` : ''}</div>
+      </div>`;
+    }).join('')}</div>`;
+  };
+
+  // ── Offers (owner) ──
+  const tabOffers = () => {
+    const left = ts => { const h = (new Date(ts) - Date.now()) / 3600e3; return h < 48 ? `${Math.max(1, Math.round(h))}h left` : `${Math.round(h / 24)}d left`; };
+    return `
+      <div class="market-section"><div class="profile-section-heading">Offers you can accept</div>
+        ${d.offersIn.length ? `<table class="market-table"><thead><tr><th>Release</th><th>For</th><th>Offer</th><th>From</th><th>Expires</th><th></th></tr></thead>
+        <tbody>${d.offersIn.map(o => `<tr>
+          <td><a class="edition-link" href="/r/${o.record_id}" data-route="/r/${o.record_id}">${esc(o.records?.title ?? '')}</a></td>
+          <td>${o.edition_number ? `#${o.edition_number}` : 'Any edition'}</td>
+          <td>${cr(o.price)}</td><td>${userLink(o.buyer)}</td><td>${left(o.expires_at)}</td>
+          <td>${o.edition_number ? `<button class="action-btn text-btn decline-offer-btn" data-offer-id="${o.id}">Decline</button> ` : ''}<button class="action-btn accept-offer-btn" data-offer-id="${o.id}">Accept</button></td>
+        </tr>`).join('')}</tbody></table>` : '<div class="chart-empty">No offers on your copies right now.</div>'}
+      </div>
+      <div class="market-section"><div class="profile-section-heading">Offers you've made</div>
+        ${d.offersMade.length ? `<table class="market-table"><thead><tr><th>Release</th><th>For</th><th>Offer</th><th>Expires</th><th></th></tr></thead>
+        <tbody>${d.offersMade.map(o => `<tr>
+          <td><a class="edition-link" href="/r/${o.record_id}" data-route="/r/${o.record_id}">${esc(o.records?.title ?? '')}</a></td>
+          <td>${o.edition_number ? `#${o.edition_number}` : 'Any edition'}</td>
+          <td>${cr(o.price)}</td><td>${left(o.expires_at)}</td>
+          <td><button class="action-btn text-btn cancel-offer-btn" data-offer-id="${o.id}">Cancel</button></td>
+        </tr>`).join('')}</tbody></table>` : '<div class="chart-empty">No open offers.</div>'}
+      </div>`;
+  };
+
   // ── Activity ──
   const activityEvents = () => {
     const pid = profile.id;
@@ -399,6 +479,13 @@ export async function profileView({ username }) {
       drawTab();
     }));
 
+    document.getElementById('followBtn')?.addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      if (d.amFollowing) await supabase.from('follows').delete().eq('follower_id', user.id).eq('followee_id', profile.id);
+      else await supabase.from('follows').insert({ follower_id: user.id, followee_id: profile.id });
+      await refresh();
+    });
+
     document.getElementById('editProfileBtn')?.addEventListener('click', async () => {
       const fd = await formDialog({
         title: 'Edit profile',
@@ -472,6 +559,30 @@ export async function profileView({ username }) {
       const price = parseInt(fd.get('price'));
       if (!(price >= 1)) return;
       await supabase.rpc('create_listing', { p_collection_id: c.id, p_ask_price: price });
+      await refresh();
+    }));
+
+    el.querySelectorAll('.unwant-btn').forEach(btn => btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      await supabase.from('wants').delete().eq('user_id', profile.id).eq('record_id', btn.dataset.recordId);
+      await refresh();
+    }));
+    el.querySelectorAll('.accept-offer-btn').forEach(btn => btn.addEventListener('click', async () => {
+      const o = d.offersIn.find(x => x.id === btn.dataset.offerId);
+      const record = { title: o.records?.title ?? '' };
+      const res = await acceptOfferDialog({ offer: o, record, copies: o.copies, fees, listingFor: d.listingFor });
+      if (!res) return;
+      await supabase.rpc('accept_offer', { p_offer_id: o.id, p_collection_id: res.collectionId });
+      await refresh();
+    }));
+    el.querySelectorAll('.decline-offer-btn').forEach(btn => btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      await supabase.rpc('decline_offer', { p_offer_id: btn.dataset.offerId });
+      await refresh();
+    }));
+    el.querySelectorAll('.cancel-offer-btn').forEach(btn => btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      await supabase.rpc('cancel_offer', { p_offer_id: btn.dataset.offerId });
       await refresh();
     }));
 

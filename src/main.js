@@ -1,6 +1,7 @@
 import './style.css';
 import { route, navigate, start } from './router.js';
 import { supabase } from './supabase.js';
+import { refreshBell } from './ui.js';
 
 // Hamburger toggle
 const hamburger = document.getElementById('navHamburger');
@@ -28,6 +29,11 @@ async function updateNav() {
   if (!supabase) { link.textContent = 'Sign In'; if (linkMobile) linkMobile.textContent = 'Sign In'; return; }
   try {
     const { data } = await supabase.auth.getUser();
+    const bell = document.getElementById('navBell');
+    const bellMobile = document.getElementById('navBellMobile');
+    if (bell) bell.hidden = !data?.user;
+    if (bellMobile) bellMobile.hidden = !data?.user;
+    if (data?.user) refreshBell();
     if (data?.user) {
       for (const el of [link, linkMobile]) {
         if (!el) continue;
@@ -47,6 +53,8 @@ async function updateNav() {
     // network failure — leave nav as-is
   }
 }
+
+setInterval(() => { if (!document.getElementById('navBell')?.hidden) refreshBell(); }, 60000);
 
 route('/', async () => {
   const { feedView } = await import('./views/feed.js');
@@ -85,6 +93,12 @@ route('/r/:id', async ({ id }) => {
 route('/r/:id/e/:n', async ({ id, n }) => {
   const { editionView } = await import('./views/edition.js');
   await editionView({ id, n });
+  updateNav();
+});
+
+route('/notifications', async () => {
+  const { notificationsView } = await import('./views/notifications.js');
+  await notificationsView();
   updateNav();
 });
 

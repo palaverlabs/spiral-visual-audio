@@ -130,3 +130,12 @@ export function formDialog({ title, body, confirmLabel = 'Save', onMount }) {
     form.querySelector('input, textarea, select')?.focus();
   });
 }
+
+// Unread notification count on the nav bell.
+export async function refreshBell() {
+  const countEl = document.getElementById('navBellCount');
+  if (!countEl || !supabase) return;
+  const { count } = await supabase.from('notifications').select('id', { count: 'exact', head: true }).is('read_at', null);
+  countEl.textContent = count > 9 ? '9+' : String(count || '');
+  countEl.hidden = !count;
+}
