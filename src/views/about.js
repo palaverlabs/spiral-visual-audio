@@ -1,36 +1,32 @@
 export function aboutView() {
   document.getElementById('view').innerHTML = `
     <div class="about-page">
-      <h1 class="about-headline">The sound is the image.</h1>
-      <p class="about-lead">Spiral Audio is an audio format where the waveform and the visual are the same object — not a visualization layered on top of audio, but a single file that <em>is</em> both.</p>
+      <h1 class="about-headline">Music you can own again</h1>
+      <p class="about-lead">Streaming made every song free to hear and impossible to keep. Spiral brings back what vinyl always gave us: a copy that's yours, a shelf to show it on, and a reason to dig.</p>
 
       <div class="about-section">
-        <h2>How it works</h2>
-        <p>When you encode a track, the audio waveform is mapped directly to the path of a spiral groove — the same way a vinyl record stores sound, but exact and digital. Every point on the spiral is an XY coordinate that encodes amplitude. There is no separate audio file. The SVG <em>is</em> the audio.</p>
-        <p>Load the file anywhere and the player reads the groove geometry back into sound, applying the same equalization curve used in vinyl mastering (RIAA). What you hear is a mathematically precise reconstruction of what was encoded.</p>
+        <h2>The Spiral is the record</h2>
+        <p>Every release on Spiral is pressed as a Spiral, a visual groove that holds the music itself. Press play and watch the song turn. Each pressing is a limited, numbered edition, so when you own #12 of 500, everyone can see you were there early.</p>
       </div>
 
       <div class="about-section">
-        <h2>The format</h2>
-        <ul class="about-list">
-          <li><strong>Open standard</strong> — plain SVG, readable by any browser</li>
-          <li><strong>Lossless</strong> — 16-bit equivalent precision, no perceptual encoding</li>
-          <li><strong>Stereo</strong> — M/S matrix encoding in the groove geometry</li>
-          <li><strong>Efficient</strong> — delta-encoded coordinates compress well with gzip</li>
-          <li><strong>Self-describing</strong> — all playback parameters are stored inside the file</li>
-        </ul>
+        <h2>Your collection, on display</h2>
+        <p>Your profile is your record shelf. It shows every edition you own, its number, and when you got it. Follow other collectors, see what they're spinning, and find your next favorite through people whose taste you trust.</p>
       </div>
 
       <div class="about-section">
-        <h2>Why</h2>
-        <p>Streaming gave everyone access to music and took away ownership. Your library lives on someone else's server, licensed to you until it isn't. Spiral Audio is built around the opposite idea — that people should own their music the way they own a record.</p>
-        <p>A Spiral record is a file you hold. You can store it, share it, pass it on. When an artist publishes a limited edition, the edition size is enforced and permanent. Collectors own a numbered artifact, not a license. The platform doesn't stand between the music and the person who has it.</p>
-        <p>The groove format is part of that. An SVG with audio baked into its geometry doesn't depend on a proprietary codec or a service staying online. It's a self-contained object — the audio is in the file, not behind an API.</p>
+        <h2>Trade with other fans</h2>
+        <p>Done with a record? Sell it to another fan on the Spiral marketplace. Every edition's history is tracked, so you always know it's the real one.</p>
       </div>
 
       <div class="about-section">
-        <h2>Try it</h2>
-        <p>Open the <a href="/studio" data-route="/studio">Studio</a> and drop in any audio file. The encoder will convert it to a spiral groove in seconds. Download the SVG, share it, or publish it to the feed.</p>
+        <h2>Artists get paid every time</h2>
+        <p>When a vinyl record resells, the artist sees nothing. On Spiral, artists earn a cut of every resale, for as long as their music keeps changing hands. Releasing on Spiral is free for artists, always.</p>
+      </div>
+
+      <div class="about-section">
+        <h2>Membership</h2>
+        <p>Spiral is free to join. Play your own collection and shop the marketplace at no cost. For $10 a month, members get 100 credits to spend on releases and can listen to any collector's library. Unused credits roll over for as long as you're a member.</p>
       </div>
     </div>`;
 }
