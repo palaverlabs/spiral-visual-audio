@@ -28,5 +28,13 @@ export function aboutView() {
         <h2>Membership</h2>
         <p>Spiral is free to join. Play your own collection and shop the marketplace at no cost. For $10 a month, members get 100 credits to spend on releases and can listen to any collector's library. Unused credits roll over for as long as you're a member.</p>
       </div>
+
+      <div class="about-section">
+        <h2>How it works</h2>
+        <p><strong>A speaker pushes air.</strong> Every sound you hear is air being pushed and pulled. A speaker does this with electricity: the signal tells a cone to push forward or pull back, thousands of times a second, and that motion travels through the air to your ear as a soundwave.</p>
+        <p><strong>A record is a picture of that motion.</strong> The groove in a vinyl record is the same push and pull, cut into a spiral. As the record turns, the needle rides the groove's wiggles and turns them back into the signal that moves the speaker. What you see in the groove is the sound.</p>
+        <p><strong>Digital audio turned the picture into numbers.</strong> When music went digital, it was stored as long lists of numbers. Those files were too big for the computers and internet speeds of the time, so MP3 was invented to shrink them by throwing away sounds it guessed you wouldn't notice. Music got smaller, and it stopped being something you could see.</p>
+        <p><strong>Spiral puts the picture back.</strong> Spiral is a new audio format where the geometry of the sound is the audio file. Every point along the spiral is one moment of push or pull, and one groove carries both speakers, just like vinyl. Nothing is stored beside the drawing. When you press play, Spiral reads the shape and turns it back into sound.</p>
+      </div>
     </div>`;
 }
