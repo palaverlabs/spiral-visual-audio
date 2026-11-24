@@ -26,7 +26,11 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { font-size: var(--font-size-root, 16px); }
+html { font-size: var(--font-size-root, 16px); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* iOS pans sideways past overflow:hidden on body; clip stops it without making a scroll container. */
+html, body { max-width: 100%; overflow-x: hidden; overflow-x: clip; }
+/* iOS Safari zooms into any field under 16px on focus and stays zoomed. */
+@media (pointer: coarse) { input, select, textarea { font-size: 16px !important; } }
 
 body {
   font-family: var(--font-ui);
@@ -1685,7 +1689,7 @@ div.banner-tile { background: radial-gradient(circle at 38% 35%, #2a2a2a, #111 6
 .hw-top { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); border-bottom: 1px solid var(--hw-line); }
 
 /* A1 deck with cover glow */
-.hw-deck { position: relative; overflow: hidden; padding: 40px; border-right: 1px solid var(--hw-line); display: flex; flex-direction: column; gap: 20px; }
+.hw-deck { position: relative; overflow: hidden; contain: paint; padding: 40px; border-right: 1px solid var(--hw-line); display: flex; flex-direction: column; gap: 20px; }
 .hw-glow { position: absolute; left: -15%; top: -15%; width: 130%; height: 130%; object-fit: cover; filter: blur(80px) saturate(1.5); opacity: 0.6; pointer-events: none; }
 .hw-vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at 50% 46%, rgba(14,14,12,0) 0%, rgba(14,14,12,0.35) 55%, rgba(14,14,12,0.88) 100%); }
 .hw-gridlines { position: absolute; inset: 0; pointer-events: none; background-image: linear-gradient(rgba(237,235,228,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(237,235,228,0.05) 1px, transparent 1px); background-size: 40px 40px; }
