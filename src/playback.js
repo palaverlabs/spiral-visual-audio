@@ -67,6 +67,7 @@ export class PlaybackManager {
       this._totalDuration = left.length / rate;
       this._baseAdv = rate / ctx.sampleRate;
       this._latestProgress = startProgress;
+      this._length = left.length;
 
       const isStereo = right !== null;
       // Without outputChannelCount the worklet output is mono (no input to inherit from),
@@ -129,6 +130,14 @@ export class PlaybackManager {
     if (!this._node || rate === this._lastRate) return;
     this._lastRate = rate;
     this._node.port.postMessage({ type: 'adv', adv: this._baseAdv * rate });
+  }
+
+  // Jump the playhead to a 0–1 position while playing.
+  seek(progress) {
+    if (!this._node) return;
+    const p = Math.max(0, Math.min(1, progress));
+    this._latestProgress = p;
+    this._node.port.postMessage({ type: 'seek', pos: Math.round(p * this._length) });
   }
 
   stop() {

@@ -2002,3 +2002,8 @@ div.record-card-vinyl { border: 1px solid var(--hw-line); box-sizing: border-box
 .hw-glow { will-change: transform; transform: translateZ(0); }
 .hw-disc canvas { will-change: transform; }
 .play-ring { display: none; }
+/* Record page: seekable progress bar and grabbable disc. */
+.hw-progress { cursor: pointer; touch-action: none; background-clip: content-box; height: 24px; padding: 11px 0; margin: -11px 0; }
+.hw-progress span { top: 11px; bottom: 11px; }
+.hw-disc { cursor: grab; touch-action: none; }
+.hw-disc.grabbing { cursor: grabbing; }

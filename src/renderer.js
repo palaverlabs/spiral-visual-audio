@@ -242,9 +242,9 @@ export class Renderer {
         ctx.beginPath(); ctx.arc(sx, sy, outer, 0, TAU); ctx.fill();
       };
       ctx.save();
-      glow(6 * pulse * scale, (28 + amplitude * 45) * scale, `${br},${bgc},${bb}`, 0.55 + amplitude * 0.3);
-      glow(4 * pulse * scale, (16 + amplitude * 28) * scale, `${br},${s.midG + (amplitude * 60 | 0)},${bb}`, 0.8 + amplitude * 0.2);
-      glow(2.5 * Math.max(1, pulse * 0.7) * scale, (7 + amplitude * 14) * scale, hexToRgb(s.coreGlow), 0.95);
+      glow(6 * pulse * scale, (28 + amplitude * 45) * scale, `${br},${bgc},${bb}`, 0.28 + amplitude * 0.17);
+      glow(4 * pulse * scale, (16 + amplitude * 28) * scale, `${br},${s.midG + (amplitude * 60 | 0)},${bb}`, 0.5 + amplitude * 0.2);
+      glow(2.5 * Math.max(1, pulse * 0.7) * scale, (7 + amplitude * 14) * scale, hexToRgb(s.coreGlow), 0.6);
       ctx.beginPath();
       ctx.arc(sx, sy, 2.5 * Math.max(1, pulse * 0.7) * scale, 0, TAU);
       ctx.fillStyle = s.core;

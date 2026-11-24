@@ -1,7 +1,7 @@
 import { supabase } from '../supabase.js';
 import { navigate } from '../router.js';
 import { loadGroove, fetchGrooveBytes } from '../groove-loader.js';
-import { DEFAULT_ROUT, DEFAULT_RIN, DEFAULT_CX, DEFAULT_CY, SPIN_SPEED } from '../constants.js';
+import { DEFAULT_ROUT, DEFAULT_RIN, DEFAULT_CX, DEFAULT_CY, SPIN_SPEED, TAU } from '../constants.js';
 import { esc, rarityTier, cr, timeAgo, userLink, specialBadge, getFees, splitSale, confirmDialog, priceChart, formDialog } from '../ui.js';
 import { makeOfferDialog, acceptOfferDialog, eligibleCopies } from '../offers.js';
 
@@ -553,7 +553,7 @@ export async function recordView({ id }) {
     renderer.preRenderGroove(result.groovePoints, geom);
     renderer.drawDiscWithGroove(0, -1, geom);
 
-    let discRotation = 0, scrubProgress = 0, spinRate = 0, isStopping = false;
+    let discRotation = 0, scrubProgress = 0, spinRate = 0, isStopping = false, isDragging = false;
     let lastTimeText = '';
     const timeEl = document.getElementById('recordCurrentTime');
     const progressEl = document.getElementById('hwProgress');
@@ -583,7 +583,9 @@ export async function recordView({ id }) {
         const dt = Math.max(0, Math.min((now - lastFrameTime) / 1000, 0.05));
         lastFrameTime = now;
 
-        if (isStopping) {
+        if (isDragging) {
+          // Hand is on the record: drag handler drives rotation and rate.
+        } else if (isStopping) {
           spinRate = Math.max(0, spinRate - 0.7 * dt);
           playback.setRate(spinRate);
           discRotation += dt * SPIN_SPEED * spinRate;
@@ -631,6 +633,76 @@ export async function recordView({ id }) {
         lastFrameTime = performance.now();
       }
     });
+
+    // ── Scrub and scratch ──
+    const turns = result.turns || 1;
+    const canvasEl = renderer.canvas;
+    const showPosition = () => {
+      const t = fmt(scrubProgress * duration);
+      if (t !== lastTimeText) { lastTimeText = t; timeEl.textContent = t; }
+      progressEl.style.transform = `scaleX(${scrubProgress.toFixed(4)})`;
+    };
+    const redrawIdle = () => {
+      if (!playback.isPlaying) renderer.drawDiscWithGroove(discRotation, scrubProgress, geom);
+      showPosition();
+    };
+
+    // Progress bar: tap or drag to seek.
+    const barEl = progressEl.parentElement;
+    const seekFromBar = (e) => {
+      const r = barEl.getBoundingClientRect();
+      scrubProgress = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      if (playback.isPlaying) playback.seek(scrubProgress);
+      redrawIdle();
+    };
+    barEl.addEventListener('pointerdown', (e) => { barEl.setPointerCapture(e.pointerId); seekFromBar(e); });
+    barEl.addEventListener('pointermove', (e) => { if (barEl.hasPointerCapture(e.pointerId)) seekFromBar(e); });
+
+    // Disc: grab the groove and spin it by hand.
+    const discEl = canvasEl.parentElement;
+    const angleAt = (e) => {
+      const r = canvasEl.getBoundingClientRect();
+      const k = canvasEl.width / r.width, s = canvasEl.width / 520;
+      const x = (e.clientX - r.left) * k - geom.cx * s, y = (e.clientY - r.top) * k - geom.cy * s;
+      return { angle: Math.atan2(y, x), dist: Math.hypot(x, y), s };
+    };
+    let lastAngle = 0, lastMove = 0, scratchVel = 0, idleTimer;
+    discEl.addEventListener('pointerdown', (e) => {
+      const { angle, dist, s } = angleAt(e);
+      if (dist < Math.max(12, geom.Rin - 8) * s || dist > (geom.Rout + 8) * s) return;
+      isDragging = true; isStopping = false;
+      lastAngle = angle; lastMove = performance.now(); scratchVel = 0;
+      discEl.setPointerCapture(e.pointerId);
+      discEl.classList.add('grabbing');
+      playback.setRate(0);
+    });
+    discEl.addEventListener('pointermove', (e) => {
+      if (!isDragging) return;
+      const now = performance.now();
+      const dt = Math.max(now - lastMove, 1) / 1000;
+      const { angle } = angleAt(e);
+      let delta = angle - lastAngle;
+      if (delta > Math.PI) delta -= TAU;
+      if (delta < -Math.PI) delta += TAU;
+      lastAngle = angle; lastMove = now;
+      scratchVel = 0.6 * scratchVel + 0.4 * (delta / dt);
+      discRotation += delta;
+      scrubProgress = Math.max(0, Math.min(1, scrubProgress + delta / (turns * TAU)));
+      if (playback.isPlaying) playback.setRate(scratchVel / ((turns * TAU) / duration));
+      redrawIdle();
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => { if (isDragging) { scratchVel = 0; playback.setRate(0); } }, 80);
+    });
+    const endDrag = () => {
+      if (!isDragging) return;
+      isDragging = false;
+      clearTimeout(idleTimer);
+      discEl.classList.remove('grabbing');
+      lastFrameTime = performance.now();
+      spinRate = 0; // spin back up from the hand-held position
+    };
+    discEl.addEventListener('pointerup', endDrag);
+    discEl.addEventListener('pointercancel', endDrag);
 
     // Resume AudioContext when screen wakes / tab becomes visible
     const onVisibility = () => {
