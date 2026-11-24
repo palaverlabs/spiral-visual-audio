@@ -594,19 +594,16 @@ export async function recordView({ id }) {
     // ── Scratch: grab the groove and spin it by hand ──
     const canvasEl = renderer.canvas;
     const discEl = canvasEl.parentElement;
-    const angleAt = e => {
-      const r = canvasEl.getBoundingClientRect();
-      const k = canvasEl.width / r.width, s = (canvasEl.width / 520) * (renderer.skin.frameScale ?? 1);
-      const c = canvasEl.width / 520; // disc centre doesn't move with frameScale
-      const x = (e.clientX - r.left) * k - geom.cx * c, y = (e.clientY - r.top) * k - geom.cy * c;
-      return { angle: Math.atan2(y, x), dist: Math.hypot(x, y), s };
+    const toCanvas = e => {
+      const r = canvasEl.getBoundingClientRect(), k = canvasEl.width / r.width;
+      return [(e.clientX - r.left) * k, (e.clientY - r.top) * k];
     };
-    let dragging = false, lastAngle = 0, lastMove = 0;
+    let dragging = false, dragDisc = 0, lastAngle = 0, lastMove = 0;
     discEl.addEventListener('pointerdown', e => {
-      const { angle, dist, s } = angleAt(e);
-      if (dist < Math.max(12, geom.Rin - 8) * s || dist > (geom.Rout + 8) * s) return;
-      dragging = true;
-      lastAngle = angle; lastMove = performance.now();
+      const hit = renderer.hitTest(...toCanvas(e), geom);
+      if (!hit) return;
+      dragging = true; dragDisc = hit.index;
+      lastAngle = hit.angle; lastMove = performance.now();
       discEl.setPointerCapture(e.pointerId);
       discEl.classList.add('grabbing');
       if (isMine()) player.beginDrag();
@@ -615,7 +612,7 @@ export async function recordView({ id }) {
       if (!dragging) return;
       const now = performance.now();
       const dt = Math.max(now - lastMove, 1) / 1000;
-      const { angle } = angleAt(e);
+      const angle = renderer.angleOn(dragDisc, ...toCanvas(e), geom);
       let delta = angle - lastAngle;
       if (delta > Math.PI) delta -= TAU;
       if (delta < -Math.PI) delta += TAU;

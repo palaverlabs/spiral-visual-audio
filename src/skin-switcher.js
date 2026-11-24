@@ -1,11 +1,11 @@
 // Skin picker for the player deck. Switching restyles the whole app and redraws the disc.
 import { SkinManager, SKINS, PLAYER_SKINS } from './skin.js';
 
-const DOT = { owl: '#d4880a', omitron: '#39ff14', eq: '#00e060' };
+const DOT = { owl: '#d4880a', omitron: '#39ff14', eq: '#00e060', hypno: '#ff3fa4', specimen: '#9fd84a' };
 
 export function skinSwitcherHtml() {
   return `<div class="skin-picker" role="radiogroup" aria-label="Player skin">${
-    PLAYER_SKINS.map(key => `<button class="skin-chip" role="radio" data-skin="${key}" style="--dot:${DOT[key]}"><span class="skin-chip-dot"></span>${SKINS[key].name}</button>`).join('')
+    PLAYER_SKINS.map(key => `<button class="skin-chip" role="radio" data-skin="${key}" style="--dot:${DOT[key]}" title="${SKINS[key].name}" aria-label="${SKINS[key].name}"><span class="skin-chip-dot"></span></button>`).join('')
   }</div>`;
 }
 

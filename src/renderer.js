@@ -179,8 +179,20 @@ export class Renderer {
       c.fillStyle = sheenGrad;
       c.fillRect(cxs - Routs, cys - Routs, Routs * 2, Routs * 2);
       c.restore();
+      if (this.skin.spiralArms) this._drawSpiralArms(c, scale, cxs, cys, Routs, labelR);
       this._drawLabel(c, scale, cxs, cys, labelR, true);
     });
+    const frame = this.skin.frame;
+    if (frame === 'hypno') this._drawHypnoBack(ctx, W, geomKey);
+    if (frame === 'jar') this._drawJarBack(ctx, W, geomKey, rotation, amplitude);
+
+    // The disc can appear more than once (eyes) or in perspective (a whirlpool).
+    for (const p of this.placements(W, cxs, cys)) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(p.kx, p.ky);
+    ctx.translate(-cxs, -cys);
+
     ctx.save();
     ctx.translate(cxs, cys);
     ctx.rotate(rotation);
@@ -264,6 +276,11 @@ export class Renderer {
       ctx.restore();
     }
 
+    ctx.restore();
+    }
+
+    if (frame === 'hypno') this._drawHypnoFront(ctx, W, geomKey, amplitude);
+    if (frame === 'jar') this._drawJarFront(ctx, W, geomKey);
     if (alien) ctx.drawImage(this._layer('alienVisor', geomKey, W, c => this._drawAlienVisor(c, W, cxs, cys, Routs, scale)), 0, 0);
   }
 
@@ -696,6 +713,327 @@ export class Renderer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('OMITRON', cxs, cys + bezelR + 28 * scale);
+  }
+
+  // ─── Disc placement and hit testing ─────────────────────────────────────────
+
+  // Where the disc is drawn: centre (canvas px) and scale. HYPNO has two (the eyes);
+  // SPECIMEN squashes it into a whirlpool seen from above at an angle.
+  placements(W, cxs, cys) {
+    const u = W / 1000;
+    if (this.skin.frame === 'hypno') return [
+      { x: 355 * u, y: 445 * u, kx: 0.24, ky: 0.24 },
+      { x: 645 * u, y: 445 * u, kx: 0.24, ky: 0.24 },
+    ];
+    if (this.skin.frame === 'jar') return [{ x: 500 * u, y: 318 * u, kx: 0.58, ky: 0.2 }];
+    return [{ x: cxs, y: cys, kx: 1, ky: 1 }];
+  }
+
+  // Canvas-pixel point → { index, angle } of the disc under it (on the groove), or null.
+  hitTest(x, y, { Rout = 220, Rin = 40, cx = 260, cy = 260 } = {}) {
+    const W = this.canvas.width, b = W / 520, scale = b * (this.skin.frameScale ?? 1);
+    const outer = (Rout + 8) * scale, inner = Math.max(12, Rin - 8) * scale;
+    const ps = this.placements(W, cx * b, cy * b);
+    for (let i = 0; i < ps.length; i++) {
+      const { angle, dist } = this._local(ps[i], x, y);
+      if (dist >= inner && dist <= outer) return { index: i, angle };
+    }
+    return null;
+  }
+
+  angleOn(index, x, y, { cx = 260, cy = 260 } = {}) {
+    const W = this.canvas.width, b = W / 520;
+    const ps = this.placements(W, cx * b, cy * b);
+    return this._local(ps[index] ?? ps[0], x, y).angle;
+  }
+
+  _local(p, x, y) {
+    const lx = (x - p.x) / p.kx, ly = (y - p.y) / p.ky;
+    return { angle: Math.atan2(ly, lx), dist: Math.hypot(lx, ly) };
+  }
+
+  // Bold spiral arms over the groove (rotate with the disc): hypnotic eyes, whirlpool currents.
+  _drawSpiralArms(ctx, scale, cxs, cys, Routs, labelR) {
+    const { count = 2, turns = 3, color, width = 0.45 } = this.skin.spiralArms;
+    const span = Routs - labelR;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cxs, cys, Routs, 0, TAU); ctx.clip();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = (span / turns / count) * width;
+    ctx.lineCap = 'round';
+    for (let k = 0; k < count; k++) {
+      const off = (k / count) * TAU;
+      ctx.beginPath();
+      for (let i = 0; i <= 400; i++) {
+        const th = (i / 400) * turns * TAU;
+        const r = labelR + span * (i / 400);
+        const x = cxs + r * Math.cos(th + off), y = cys + r * Math.sin(th + off);
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ─── HYPNO: a face whose eyes are the spinning record ──────────────────────
+
+  _drawHypnoBack(ctx, W, key) {
+    ctx.drawImage(this._layer('hypnoBack', key, W, c => {
+      const u = W / 1000;
+      const P = '255,63,164';
+      const bg = c.createRadialGradient(500 * u, 430 * u, 40 * u, 500 * u, 500 * u, 760 * u);
+      bg.addColorStop(0, '#2a0f2e'); bg.addColorStop(1, '#07030a');
+      c.fillStyle = bg; c.fillRect(0, 0, W, W);
+      for (let i = 1; i < 14; i++) {
+        c.beginPath(); c.arc(500 * u, 445 * u, i * 62 * u, 0, TAU);
+        c.strokeStyle = `rgba(${P},${Math.max(0, 0.06 - i * 0.004)})`; c.lineWidth = 2 * u; c.stroke();
+      }
+
+      // Shoulders and neck
+      c.fillStyle = '#12080f';
+      c.beginPath();
+      c.moveTo(30 * u, W);
+      c.bezierCurveTo(80 * u, 930 * u, 260 * u, 905 * u, 410 * u, 890 * u);
+      c.lineTo(425 * u, 780 * u); c.lineTo(575 * u, 780 * u); c.lineTo(590 * u, 890 * u);
+      c.bezierCurveTo(740 * u, 905 * u, 920 * u, 930 * u, 970 * u, W);
+      c.closePath(); c.fill();
+      c.strokeStyle = `rgba(${P},0.35)`; c.lineWidth = 2 * u; c.stroke();
+
+      // Ears
+      for (const ex of [205, 795]) {
+        c.beginPath(); c.ellipse(ex * u, 490 * u, 40 * u, 72 * u, 0, 0, TAU);
+        c.fillStyle = '#2c1724'; c.fill();
+        c.strokeStyle = `rgba(${P},0.4)`; c.lineWidth = 2 * u; c.stroke();
+      }
+
+      // Head
+      const skin = c.createRadialGradient(470 * u, 400 * u, 60 * u, 500 * u, 470 * u, 420 * u);
+      skin.addColorStop(0, '#45283a'); skin.addColorStop(1, '#1a0d17');
+      c.beginPath(); c.ellipse(500 * u, 470 * u, 300 * u, 385 * u, 0, 0, TAU);
+      c.fillStyle = skin; c.fill();
+      c.save();
+      c.shadowColor = `rgb(${P})`; c.shadowBlur = 18 * u;
+      c.strokeStyle = `rgba(${P},0.7)`; c.lineWidth = 3 * u; c.stroke();
+      c.restore();
+
+      // Cheeks
+      for (const bx of [290, 710]) {
+        const g = c.createRadialGradient(bx * u, 640 * u, 0, bx * u, 640 * u, 80 * u);
+        g.addColorStop(0, `rgba(${P},0.18)`); g.addColorStop(1, `rgba(${P},0)`);
+        c.fillStyle = g; c.fillRect((bx - 80) * u, 560 * u, 160 * u, 160 * u);
+      }
+
+      // Hair, with a scalloped fringe
+      c.beginPath();
+      c.moveTo(196 * u, 520 * u);
+      c.bezierCurveTo(165 * u, 250 * u, 330 * u, 60 * u, 500 * u, 66 * u);
+      c.bezierCurveTo(690 * u, 60 * u, 845 * u, 240 * u, 804 * u, 520 * u);
+      c.bezierCurveTo(790 * u, 360 * u, 720 * u, 250 * u, 650 * u, 290 * u);
+      c.bezierCurveTo(610 * u, 220 * u, 530 * u, 220 * u, 500 * u, 280 * u);
+      c.bezierCurveTo(470 * u, 220 * u, 390 * u, 220 * u, 350 * u, 290 * u);
+      c.bezierCurveTo(280 * u, 250 * u, 210 * u, 360 * u, 196 * u, 520 * u);
+      c.fillStyle = '#0b040b'; c.fill();
+      c.strokeStyle = `rgba(${P},0.45)`; c.lineWidth = 2 * u; c.stroke();
+      c.strokeStyle = `rgba(${P},0.12)`;
+      for (let i = 0; i < 9; i++) {
+        c.beginPath();
+        c.moveTo((260 + i * 60) * u, 120 * u + Math.abs(i - 4) * 18 * u);
+        c.quadraticCurveTo((280 + i * 55) * u, 200 * u, (250 + i * 62) * u, 290 * u);
+        c.stroke();
+      }
+
+      // Eye sockets (the discs sit in these)
+      for (const ex of [355, 645]) {
+        const g = c.createRadialGradient(ex * u, 445 * u, 90 * u, ex * u, 445 * u, 140 * u);
+        g.addColorStop(0, 'rgba(0,0,0,0.85)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+        c.fillStyle = g; c.beginPath(); c.arc(ex * u, 445 * u, 140 * u, 0, TAU); c.fill();
+      }
+
+      // Nose
+      c.strokeStyle = `rgba(${P},0.45)`; c.lineWidth = 3 * u; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(500 * u, 500 * u); c.quadraticCurveTo(470 * u, 600 * u, 478 * u, 630 * u);
+      c.quadraticCurveTo(500 * u, 648 * u, 528 * u, 630 * u); c.stroke();
+    }), 0, 0);
+  }
+
+  _drawHypnoFront(ctx, W, key, amplitude) {
+    const u = W / 1000;
+    const P = '255,63,164';
+    // Eyelids and lashes, static
+    ctx.drawImage(this._layer('hypnoFront', key, W, c => {
+      c.lineCap = 'round';
+      for (const [ex, dir] of [[355, -1], [645, 1]]) {
+        c.strokeStyle = `rgb(${P})`; c.lineWidth = 6 * u;
+        c.beginPath(); c.arc(ex * u, 445 * u, 112 * u, Math.PI * 1.08, Math.PI * 1.92); c.stroke();
+        c.strokeStyle = `rgba(${P},0.35)`; c.lineWidth = 3 * u;
+        c.beginPath(); c.arc(ex * u, 445 * u, 112 * u, Math.PI * 0.12, Math.PI * 0.88); c.stroke();
+        c.strokeStyle = `rgb(${P})`; c.lineWidth = 4 * u;
+        for (let i = 0; i < 5; i++) {
+          const a = Math.PI * (1.15 + i * 0.17);
+          const x1 = ex * u + 112 * u * Math.cos(a), y1 = 445 * u + 112 * u * Math.sin(a);
+          const lean = dir * (i - 2) * 0.12;
+          c.beginPath(); c.moveTo(x1, y1);
+          c.lineTo(x1 + 26 * u * Math.cos(a + lean), y1 + 26 * u * Math.sin(a + lean)); c.stroke();
+        }
+      }
+    }), 0, 0);
+
+    // Brows lift and the mouth opens with the music
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = `rgb(${P})`;
+    ctx.lineWidth = 9 * u;
+    const lift = amplitude * 30 * u;
+    for (const [ex, tilt] of [[355, 1], [645, -1]]) {
+      ctx.beginPath();
+      ctx.moveTo((ex - 95) * u, 300 * u - lift + tilt * 8 * u);
+      ctx.quadraticCurveTo(ex * u, 255 * u - lift * 1.4, (ex + 95) * u, 300 * u - lift - tilt * 8 * u);
+      ctx.stroke();
+    }
+    const open = (8 + amplitude * 75) * u;
+    ctx.beginPath(); ctx.ellipse(500 * u, 728 * u, (70 + amplitude * 12) * u, open, 0, 0, TAU);
+    ctx.fillStyle = '#14030d'; ctx.fill();
+    ctx.lineWidth = 6 * u; ctx.stroke();
+    if (open > 22 * u) {
+      ctx.save(); ctx.clip();
+      ctx.fillStyle = `rgba(${P},0.35)`;
+      ctx.beginPath(); ctx.ellipse(500 * u, 728 * u + open * 0.7, 40 * u, open * 0.5, 0, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  // ─── SPECIMEN: a head in a jar, the record is the whirlpool ────────────────
+
+  _drawJarBack(ctx, W, key, rotation, amplitude) {
+    const u = W / 1000;
+    ctx.drawImage(this._layer('jarBack', key, W, c => {
+      const bg = c.createRadialGradient(500 * u, 450 * u, 60 * u, 500 * u, 500 * u, 760 * u);
+      bg.addColorStop(0, '#141c10'); bg.addColorStop(1, '#030502');
+      c.fillStyle = bg; c.fillRect(0, 0, W, W);
+      // Shelf
+      c.fillStyle = '#1a1d15'; c.fillRect(0, 905 * u, W, 30 * u);
+      c.fillStyle = 'rgba(200,230,150,0.12)'; c.fillRect(0, 905 * u, W, 2 * u);
+      // Glow from the jar onto the wall
+      const halo = c.createRadialGradient(500 * u, 560 * u, 100 * u, 500 * u, 560 * u, 520 * u);
+      halo.addColorStop(0, 'rgba(150,220,60,0.16)'); halo.addColorStop(1, 'rgba(150,220,60,0)');
+      c.fillStyle = halo; c.fillRect(0, 0, W, W);
+      // Back glass and liquid
+      this._jarPath(c, u);
+      c.fillStyle = 'rgba(190,240,200,0.04)'; c.fill();
+      c.save(); this._jarPath(c, u); c.clip();
+      const liquid = c.createLinearGradient(0, 318 * u, 0, 900 * u);
+      liquid.addColorStop(0, 'rgba(160,215,70,0.32)'); liquid.addColorStop(1, 'rgba(50,95,15,0.62)');
+      c.fillStyle = liquid; c.fillRect(0, 318 * u, W, W);
+      for (let i = 0; i < 6; i++) {
+        const x = (260 + i * 95) * u;
+        const ray = c.createLinearGradient(0, 330 * u, 0, 880 * u);
+        ray.addColorStop(0, 'rgba(220,255,160,0.07)'); ray.addColorStop(1, 'rgba(220,255,160,0)');
+        c.fillStyle = ray;
+        c.beginPath(); c.moveTo(x, 330 * u); c.lineTo(x + 30 * u, 330 * u); c.lineTo(x + 70 * u, 880 * u); c.lineTo(x + 20 * u, 880 * u); c.fill();
+      }
+      c.restore();
+      // Surface sheet the whirlpool sits in
+      c.beginPath(); c.ellipse(500 * u, 318 * u, 288 * u, 100 * u, 0, 0, TAU);
+      c.fillStyle = 'rgba(175,230,90,0.22)'; c.fill();
+    }), 0, 0);
+
+    // The head drifts and turns in the current; bubbles rise faster when the music's loud.
+    const t = rotation;
+    const now = performance.now() / 1000;
+    ctx.save();
+    this._jarPath(ctx, u); ctx.clip();
+    for (let i = 0; i < 16; i++) {
+      const speed = 60 + (i * 37) % 70;
+      const y = 890 * u - ((now * speed * (1 + amplitude * 2) + i * 131) % 560) * u;
+      const x = (260 + (i * 211) % 480) * u + Math.sin(now * 2 + i) * 10 * u;
+      const r = (3 + (i % 4) * 2) * u;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, TAU);
+      ctx.strokeStyle = `rgba(220,255,170,${0.25 + amplitude * 0.5})`; ctx.lineWidth = 1.5 * u; ctx.stroke();
+    }
+    const hx = 500 * u + Math.cos(t * 0.35) * 70 * u;
+    const hy = 615 * u + Math.sin(t * 0.7) * 16 * u - amplitude * 14 * u;
+    this._drawJarHead(ctx, u, hx, hy, t * 0.22, now, amplitude);
+    // Liquid tint over the head so it reads as submerged
+    ctx.fillStyle = 'rgba(120,180,40,0.16)'; ctx.fillRect(0, 330 * u, W, W);
+    ctx.restore();
+  }
+
+  _jarPath(c, u) {
+    c.beginPath();
+    c.roundRect(210 * u, 160 * u, 580 * u, 740 * u, [40 * u, 40 * u, 80 * u, 80 * u]);
+  }
+
+  _drawJarHead(ctx, u, x, y, angle, now, amplitude) {
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(angle);
+    // Hair floating up and swaying
+    ctx.strokeStyle = 'rgba(40,30,20,0.75)'; ctx.lineWidth = 5 * u; ctx.lineCap = 'round';
+    for (let i = 0; i < 9; i++) {
+      const bx = (-70 + i * 17.5) * u;
+      const sway = Math.sin(now * 1.6 + i * 0.8) * 22 * u;
+      ctx.beginPath(); ctx.moveTo(bx, -95 * u);
+      ctx.bezierCurveTo(bx + sway, -150 * u, bx - sway, -185 * u, bx + sway * 1.4, -225 * u);
+      ctx.stroke();
+    }
+    // Neck stump
+    ctx.fillStyle = '#7d9a64';
+    ctx.beginPath(); ctx.roundRect(-38 * u, 90 * u, 76 * u, 60 * u, 12 * u); ctx.fill();
+    ctx.strokeStyle = '#4a2a2a'; ctx.lineWidth = 3 * u;
+    for (let i = 0; i < 5; i++) { const sx = (-28 + i * 14) * u; ctx.beginPath(); ctx.moveTo(sx, 140 * u); ctx.lineTo(sx + 7 * u, 152 * u); ctx.stroke(); }
+    // Face
+    const face = ctx.createRadialGradient(-20 * u, -30 * u, 10 * u, 0, 0, 130 * u);
+    face.addColorStop(0, '#d6ecbe'); face.addColorStop(1, '#7c9e66');
+    ctx.beginPath(); ctx.ellipse(0, 0, 95 * u, 122 * u, 0, 0, TAU);
+    ctx.fillStyle = face; ctx.fill();
+    ctx.strokeStyle = 'rgba(30,50,20,0.6)'; ctx.lineWidth = 2.5 * u; ctx.stroke();
+    // Ears
+    ctx.fillStyle = '#89aa70';
+    for (const ex of [-95, 95]) { ctx.beginPath(); ctx.ellipse(ex * u, 0, 14 * u, 26 * u, 0, 0, TAU); ctx.fill(); }
+    // Stitched scar across the forehead
+    ctx.strokeStyle = '#4a2a2a'; ctx.lineWidth = 3 * u;
+    ctx.beginPath(); ctx.moveTo(-60 * u, -62 * u); ctx.quadraticCurveTo(0, -80 * u, 62 * u, -58 * u); ctx.stroke();
+    for (let i = 0; i < 7; i++) {
+      const sx = (-50 + i * 17) * u, sy = (-66 - Math.sin((i / 6) * Math.PI) * 10) * u;
+      ctx.beginPath(); ctx.moveTo(sx - 4 * u, sy - 8 * u); ctx.lineTo(sx + 4 * u, sy + 8 * u); ctx.stroke();
+    }
+    // Closed eyes, nose, mouth that puffs bubbles with the beat
+    ctx.strokeStyle = '#2b3a22'; ctx.lineWidth = 3.5 * u;
+    for (const ex of [-36, 36]) { ctx.beginPath(); ctx.arc(ex * u, -10 * u, 16 * u, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke(); }
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(-12 * u, 30 * u, 4 * u, 36 * u); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(0, 66 * u, (10 + amplitude * 8) * u, (6 + amplitude * 14) * u, 0, 0, TAU);
+    ctx.fillStyle = '#2b1a1a'; ctx.fill();
+    ctx.restore();
+  }
+
+  _drawJarFront(ctx, W, key) {
+    ctx.drawImage(this._layer('jarFront', key, W, c => {
+      const u = W / 1000;
+      // Glass edge and highlights
+      this._jarPath(c, u);
+      c.strokeStyle = 'rgba(210,255,220,0.35)'; c.lineWidth = 4 * u; c.stroke();
+      for (const [x, w, a] of [[240, 26, 0.16], [278, 8, 0.1], [742, 14, 0.12]]) {
+        const g = c.createLinearGradient(0, 200 * u, 0, 860 * u);
+        g.addColorStop(0, `rgba(255,255,255,${a})`); g.addColorStop(0.6, `rgba(255,255,255,${a * 0.4})`); g.addColorStop(1, 'rgba(255,255,255,0)');
+        c.fillStyle = g; c.beginPath(); c.roundRect(x * u, 200 * u, w * u, 640 * u, w * u / 2); c.fill();
+      }
+      // Lid
+      const lid = c.createLinearGradient(0, 100 * u, 0, 170 * u);
+      lid.addColorStop(0, '#5a6052'); lid.addColorStop(0.5, '#33372d'); lid.addColorStop(1, '#1c1f18');
+      c.fillStyle = lid; c.beginPath(); c.roundRect(225 * u, 105 * u, 550 * u, 62 * u, 10 * u); c.fill();
+      c.strokeStyle = 'rgba(0,0,0,0.5)'; c.lineWidth = 2 * u;
+      for (let i = 0; i < 26; i++) { const x = (245 + i * 20) * u; c.beginPath(); c.moveTo(x, 112 * u); c.lineTo(x, 160 * u); c.stroke(); }
+      c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(230 * u, 110 * u, 540 * u, 4 * u);
+      // Paper label
+      c.save();
+      c.translate(500 * u, 830 * u); c.rotate(-0.03);
+      c.fillStyle = 'rgba(220,208,172,0.88)'; c.fillRect(-150 * u, -42 * u, 300 * u, 84 * u);
+      c.strokeStyle = 'rgba(80,60,30,0.6)'; c.lineWidth = 2 * u; c.strokeRect(-140 * u, -32 * u, 280 * u, 64 * u);
+      c.fillStyle = '#3a2c18'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.font = `600 ${26 * u}px 'IBM Plex Mono', monospace`; c.fillText('SPECIMEN', 0, -8 * u);
+      c.font = `${15 * u}px 'IBM Plex Mono', monospace`; c.fillText('Nº 07 · SPIRAL RECORDS', 0, 18 * u);
+      c.restore();
+    }), 0, 0);
   }
 
   _drawSheen(ctx, W, cxs, cys, Routs, scale) {

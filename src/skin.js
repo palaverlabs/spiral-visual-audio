@@ -316,8 +316,90 @@ const EQ_CANVAS = {
   },
 };
 
+const HYPNO_CSS = {
+  ...OWL_CSS,
+  '--bg-grad-1': '#0a040b', '--bg-grad-2': '#140816',
+  '--panel-bg': 'rgba(255,63,164,0.03)', '--panel-border': 'rgba(255,63,164,0.18)',
+  '--accent': '#ff3fa4', '--accent-alt': '#b02a72', '--accent-glow': 'rgba(255,63,164,0.42)',
+  '--accent-subtle': 'rgba(255,63,164,0.1)', '--accent-subtle-drag': 'rgba(255,63,164,0.2)',
+  '--text': '#f6dcea', '--text-muted': '#6e3a58', '--text-secondary': '#d08ab0',
+  '--upload-audio': '#ff3fa4', '--status-success': '#ff3fa4', '--section-border-left': '#ff3fa4',
+};
+
+const HYPNO_CANVAS = {
+  frame: 'hypno',
+  spiralArms: { count: 2, turns: 3, color: 'rgba(0,0,0,0.62)', width: 0.5 },
+  disc: {
+    bg: ['#f4e9f0', '#e6d2e0', '#d6bccd'],
+    rim: '#ff3fa4',
+    outerRim: 'rgba(255,63,164,0.3)',
+    rings: ['rgba(80,0,40,0.05)', 'rgba(80,0,40,0.03)'],
+  },
+  label: {
+    bg: ['#05000a', '#0a0010', '#14001a'],
+    border: '#ff3fa4',
+    innerRing: 'rgba(255,63,164,0.5)',
+    text: 'rgba(255,63,164,0)',
+    textEmpty: 'rgba(255,63,164,0)',
+    labelText: ' ',
+  },
+  groove: {
+    base: 'rgba(60,0,30,0.55)',
+    glow: '#ff3fa4',
+    glowCore: 'rgba(120,0,60,0.25)',
+    hueShift: 300,
+    hueMult: 0.12,
+  },
+  activeRing: { outer: 'rgba(255,63,164,0.5)', inner: 'rgba(255,160,210,0.3)', glow: '#ff3fa4' },
+  stylus: {
+    bloom: '#ffffff', bloomFill: [255, 255, 255], midG: 230,
+    core: '#ffffff', coreGlow: '#ffd0ea', beamRGB: [255, 63, 164],
+  },
+};
+
+const SPECIMEN_CSS = {
+  ...OWL_CSS,
+  '--bg-grad-1': '#050803', '--bg-grad-2': '#0b1207',
+  '--panel-bg': 'rgba(159,216,74,0.03)', '--panel-border': 'rgba(159,216,74,0.18)',
+  '--accent': '#9fd84a', '--accent-alt': '#5f8f22', '--accent-glow': 'rgba(159,216,74,0.42)',
+  '--accent-subtle': 'rgba(159,216,74,0.1)', '--accent-subtle-drag': 'rgba(159,216,74,0.2)',
+  '--text': '#e4f0d0', '--text-muted': '#4f6338', '--text-secondary': '#a8c080',
+  '--upload-audio': '#9fd84a', '--status-success': '#9fd84a', '--section-border-left': '#9fd84a',
+};
+
+const SPECIMEN_CANVAS = {
+  frame: 'jar',
+  spiralArms: { count: 4, turns: 1.4, color: 'rgba(225,255,180,0.22)', width: 0.35 },
+  disc: {
+    bg: ['#0e2a06', '#1d4a0c', '#3d7a1a'],
+    rim: 'rgba(200,255,140,0.35)',
+    outerRim: 'rgba(170,230,90,0.25)',
+    rings: ['rgba(220,255,170,0.06)', 'rgba(120,200,60,0.05)'],
+  },
+  label: {
+    bg: ['#020600', '#071202', '#0e2a06'],
+    border: 'rgba(170,230,90,0.4)',
+    innerRing: 'rgba(170,230,90,0.25)',
+    text: 'rgba(0,0,0,0)',
+    textEmpty: 'rgba(0,0,0,0)',
+    labelText: ' ',
+  },
+  groove: {
+    base: 'rgba(200,250,140,0.35)',
+    glow: '#b6ff5c',
+    glowCore: 'rgba(220,255,170,0.18)',
+    hueShift: 70,
+    hueMult: 0.15,
+  },
+  activeRing: { outer: 'rgba(210,255,150,0.35)', inner: 'rgba(240,255,200,0.2)', glow: '#b6ff5c' },
+  stylus: {
+    bloom: '#e8ffb0', bloomFill: [220, 255, 160], midG: 240,
+    core: '#f4ffd8', coreGlow: '#ffffff', beamRGB: [190, 255, 120],
+  },
+};
+
 // Skins offered in the player. Classic and VAGC-77 stay defined (Classic is the base for custom skins).
-export const PLAYER_SKINS = ['owl', 'omitron', 'eq'];
+export const PLAYER_SKINS = ['owl', 'omitron', 'eq', 'hypno', 'specimen'];
 
 export const SKINS = {
   classic: {
@@ -343,6 +425,18 @@ export const SKINS = {
     fontUrl: null,
     css: OWL_CSS,
     canvas: OWL_CANVAS,
+  },
+  hypno: {
+    name: 'HYPNO',
+    fontUrl: null,
+    css: HYPNO_CSS,
+    canvas: HYPNO_CANVAS,
+  },
+  specimen: {
+    name: 'SPECIMEN',
+    fontUrl: null,
+    css: SPECIMEN_CSS,
+    canvas: SPECIMEN_CANVAS,
   },
   eq: {
     name: 'EQ',
@@ -390,7 +484,7 @@ export class SkinManager {
     if (!name) return null;
     if (name === 'omitron') { this.apply(SKINS.omitron);  return SKINS.omitron;  }
     if (name === 'owl')     { this.apply(SKINS.owl);      return SKINS.owl;      }
-    if (name === 'eq')      { this.apply(SKINS.eq);       return SKINS.eq;       }
+    if (SKINS[name] && name !== 'classic' && name !== 'vagc77') { this.apply(SKINS[name]); return SKINS[name]; }
     if (name === 'custom') {
       const json = localStorage.getItem('vagc-skin-custom');
       if (json) {
@@ -427,8 +521,8 @@ export class SkinManager {
       localStorage.setItem('vagc-skin-name', 'omitron');
     } else if (skin === SKINS.owl) {
       localStorage.setItem('vagc-skin-name', 'owl');
-    } else if (skin === SKINS.eq) {
-      localStorage.setItem('vagc-skin-name', 'eq');
+    } else if (Object.values(SKINS).includes(skin)) {
+      localStorage.setItem('vagc-skin-name', Object.keys(SKINS).find(k => SKINS[k] === skin));
     } else {
       localStorage.setItem('vagc-skin-name', 'custom');
       localStorage.setItem('vagc-skin-custom', JSON.stringify(skin));
