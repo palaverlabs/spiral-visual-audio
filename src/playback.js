@@ -84,7 +84,9 @@ export class PlaybackManager {
       this._node.connect(this._analyser);
       this._analyser.connect(ctx.destination);
 
-      this._node.port.onmessage = ({ data }) => {
+      const node = this._node;
+      node.port.onmessage = ({ data }) => {
+        if (node !== this._node) return; // late message from a node we already stopped
         if (data.type === 'pos') {
           this._latestProgress = data.v;
           const raw = data.amp || 0;
@@ -153,6 +155,7 @@ export class PlaybackManager {
       this._freqData = null;
     }
     if (this._node) {
+      this._node.port.onmessage = null;
       this._node.disconnect();
       this._node = null;
     }

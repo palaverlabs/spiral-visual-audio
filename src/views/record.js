@@ -1,24 +1,9 @@
 import { supabase } from '../supabase.js';
 import { navigate } from '../router.js';
-import { loadGroove, fetchGrooveBytes } from '../groove-loader.js';
-import { DEFAULT_ROUT, DEFAULT_RIN, DEFAULT_CX, DEFAULT_CY, SPIN_SPEED, TAU } from '../constants.js';
+import { TAU } from '../constants.js';
+import { player, getGroove, fetchRecord, queueFor, coverUrl, GEOM_DEFAULTS } from '../player.js';
 import { esc, rarityTier, cr, timeAgo, userLink, specialBadge, getFees, splitSale, confirmDialog, priceChart, formDialog } from '../ui.js';
 import { makeOfferDialog, acceptOfferDialog, eligibleCopies } from '../offers.js';
-
-// Prefetch cache of raw groove bytes: id → Promise<ArrayBuffer|null>. Decoding happens when the record opens.
-const bytesCache = new Map();
-const GEOM_DEFAULTS = { Rout: DEFAULT_ROUT, Rin: DEFAULT_RIN, cx: DEFAULT_CX, cy: DEFAULT_CY };
-
-function grooveUrl(record) {
-  return record?.file_path ? supabase.storage.from('records').getPublicUrl(record.file_path).data?.publicUrl : null;
-}
-
-function prefetchGroove(record) {
-  const url = grooveUrl(record);
-  if (!url || bytesCache.has(record.id)) return;
-  if (bytesCache.size >= 2) bytesCache.delete(bytesCache.keys().next().value);
-  bytesCache.set(record.id, fetchGrooveBytes(url).catch(() => { bytesCache.delete(record.id); return null; }));
-}
 
 const SVG_PLAY = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>`;
 const SVG_PAUSE = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="5" y="4" width="4" height="16"/><rect x="15" y="4" width="4" height="16"/></svg>`;
@@ -93,13 +78,10 @@ export async function recordView({ id }) {
 
   // Start the groove download + decode (in a worker) and the player modules right away,
   // in parallel with everything else the page loads.
-  const svgUrl = grooveUrl(record);
-  const groovePromise = !svgUrl ? Promise.reject(new Error('Could not resolve file URL.'))
-    : bytesCache.has(id)
-      ? bytesCache.get(id).then(buf => loadGroove(buf ? { buf } : { url: svgUrl }, GEOM_DEFAULTS))
-      : loadGroove({ url: svgUrl }, GEOM_DEFAULTS);
+  const groovePromise = player.record?.id === id ? Promise.resolve(player.groove) : getGroove(record);
   groovePromise.catch(() => {});
-  const playerModules = Promise.all([import('../renderer.js'), import('../playback.js'), import('../skin.js')]);
+  const queuePromise = queueFor(record).catch(() => [id]);
+  const playerModules = Promise.all([import('../renderer.js'), import('../skin.js')]);
 
   const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -133,24 +115,7 @@ export async function recordView({ id }) {
     document.getElementById('recordMeta').after(descEl);
   }
 
-  // Fetch user + their library for up-next
   const { data: { user } = {} } = await supabase.auth.getUser().catch(() => ({ data: {} }));
-  let nextRecord = null, prevRecord = null;
-  if (user) {
-    const { data: libraryRecords } = await supabase
-      .from('records')
-      .select('id, title, artist, thumbnail_path, cover_path, file_path')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
-    if (libraryRecords?.length) {
-      const idx = libraryRecords.findIndex(r => r.id === id);
-      if (idx !== -1) {
-        if (idx + 1 < libraryRecords.length) nextRecord = libraryRecords[idx + 1];
-        if (idx > 0) prevRecord = libraryRecords[idx - 1];
-      }
-    }
-  }
-  if (nextRecord) prefetchGroove(nextRecord);
   if (user && user.id === record.user_id) {
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'action-btn record-delete-btn';
@@ -501,48 +466,23 @@ export async function recordView({ id }) {
   setStatus('Loading groove...');
 
   try {
-    const [[{ Renderer }, { PlaybackManager }, { SkinManager, SKINS }], result] = await Promise.all([playerModules, groovePromise]);
+    const [[{ Renderer }, { SkinManager, SKINS }], result, queue] = await Promise.all([playerModules, groovePromise, queuePromise]);
 
-    const geom = { ...GEOM_DEFAULTS };
-    geom.Rout = result.Rout; geom.Rin = result.Rin; geom.cx = result.cx; geom.cy = result.cy;
+    const geom = { ...GEOM_DEFAULTS, Rout: result.Rout, Rin: result.Rin, cx: result.cx, cy: result.cy };
     const duration = result.samples.length / result.sampleRate;
+    const turns = result.turns || 1;
 
     document.getElementById('recordTotalTime').textContent = fmt(duration);
     document.getElementById('hwSpecs').textContent =
       `${(result.sampleRate / 1000).toFixed(1)} KHZ · ${result.samplesR ? 'STEREO' : 'MONO'} · ${Math.round(result.turns)} TURNS`;
     setStatus('', 'success');
 
-    // Up next
-    let upNextTimer = null;
-    const upNextEl = document.getElementById('upNext');
-    if (nextRecord) {
-      const thumbPath = nextRecord.cover_path || nextRecord.thumbnail_path;
-      const thumbUrl = thumbPath
-        ? supabase.storage.from('records').getPublicUrl(thumbPath).data.publicUrl
-        : null;
-      const img = thumbUrl ? `<img class="up-next-thumb" src="${thumbUrl}" alt="">` : `<div class="up-next-thumb"></div>`;
-      upNextEl.innerHTML = `
-        ${img}
-        <div class="up-next-info">
-          <div class="up-next-label">Up Next</div>
-          <div class="up-next-title">${esc(nextRecord.title)}</div>
-          ${nextRecord.artist ? `<div class="up-next-artist">${esc(nextRecord.artist)}</div>` : ''}
-        </div>
-        <button class="up-next-cancel" id="upNextCancel" style="display:none">Cancel</button>`;
-      upNextEl.style.display = 'flex';
-      upNextEl.style.cursor = 'pointer';
-      upNextEl.addEventListener('click', e => {
-        if (e.target.id === 'upNextCancel') return;
-        navigate(`/r/${nextRecord.id}`);
-      });
-    }
-
-    const prevBtn = document.getElementById('recordPrevBtn');
-    const nextBtn = document.getElementById('recordNextBtn');
-    prevBtn.innerHTML = SVG_PREV;
-    nextBtn.innerHTML = SVG_NEXT;
-    if (prevRecord) { prevBtn.disabled = false; prevBtn.addEventListener('click', () => navigate(`/r/${prevRecord.id}`)); }
-    if (nextRecord) { nextBtn.disabled = false; nextBtn.addEventListener('click', () => navigate(`/r/${nextRecord.id}`)); }
+    // This page drives the app-wide player when it holds this record; otherwise the deck keeps its own
+    // position until Play hands the record to the player.
+    const isMine = () => player.record?.id === id;
+    const myQueue = () => isMine() ? player.queue : queue;
+    const neighbor = d => { const q = myQueue(); const i = q.indexOf(id); return i >= 0 ? q[i + d] ?? null : null; };
+    const local = { rotation: 0, progress: 0, touched: false };
 
     const skinMgr = new SkinManager();
     const skin = skinMgr.restore() || SKINS.owl;
@@ -551,133 +491,129 @@ export async function recordView({ id }) {
     const renderer = new Renderer(document.getElementById('recordCanvas'));
     renderer.setSkin(skin.canvas);
     renderer.preRenderGroove(result.groovePoints, geom);
-    renderer.drawDiscWithGroove(0, -1, geom);
 
-    let discRotation = 0, scrubProgress = 0, spinRate = 0, isStopping = false, isDragging = false;
-    let lastTimeText = '';
     const timeEl = document.getElementById('recordCurrentTime');
     const progressEl = document.getElementById('hwProgress');
-    let lastFrameTime = performance.now();
-
-    const playback = new PlaybackManager({
-      onEnd: () => {
-        if (!nextRecord) return;
-        let secs = 3;
-        const cancelBtn = document.getElementById('upNextCancel');
-        if (cancelBtn) cancelBtn.style.display = 'block';
-        const label = upNextEl.querySelector('.up-next-label');
-        const tick = () => {
-          if (label) label.textContent = `Playing next in ${secs}…`;
-          if (secs === 0) { navigate(`/r/${nextRecord.id}`); return; }
-          secs--;
-          upNextTimer = setTimeout(tick, 1000);
-        };
-        tick();
-        cancelBtn?.addEventListener('click', () => {
-          clearTimeout(upNextTimer);
-          if (label) label.textContent = 'Up Next';
-          cancelBtn.style.display = 'none';
-        });
-      },
-      onFrame: ({ progress, audioTimePosition, amplitude = 0, now = performance.now() }) => {
-        const dt = Math.max(0, Math.min((now - lastFrameTime) / 1000, 0.05));
-        lastFrameTime = now;
-
-        if (isDragging) {
-          // Hand is on the record: drag handler drives rotation and rate.
-        } else if (isStopping) {
-          spinRate = Math.max(0, spinRate - 0.7 * dt);
-          playback.setRate(spinRate);
-          discRotation += dt * SPIN_SPEED * spinRate;
-          if (spinRate === 0) { isStopping = false; playback.stop(); return; }
-        } else {
-          spinRate = Math.min(1, spinRate + 1.5 * dt);
-          discRotation += dt * SPIN_SPEED * spinRate;
-          playback.setRate(spinRate);
-        }
-
-        scrubProgress = progress;
-        renderer.drawDiscWithGroove(discRotation, scrubProgress, geom, amplitude, playback.getFrequencyData());
-        // Touch the DOM only when something visible changed: text once a second,
-        // progress via transform (compositor-only, no layout).
-        const t = fmt(audioTimePosition);
-        if (t !== lastTimeText) { lastTimeText = t; if (timeEl) timeEl.textContent = t; }
-        if (progressEl) progressEl.style.transform = `scaleX(${Math.max(0, Math.min(1, progress)).toFixed(4)})`;
-      },
-      onStop: () => {
-        const btn = document.getElementById('recordPlayBtn');
-        const wrap = document.getElementById('recordPlayWrap');
-        if (btn) btn.innerHTML = SVG_PLAY;
-        if (wrap) wrap.classList.remove('playing');
-      },
-      onDebug: () => {},
-    });
-
-    const btn = document.getElementById('recordPlayBtn');
-    btn.disabled = false;
-    btn.innerHTML = SVG_PLAY;
-    btn.addEventListener('click', async () => {
-      if (playback.isPlaying || isStopping) {
-        isStopping = true;
-        btn.innerHTML = SVG_PLAY;
-        document.getElementById('recordPlayWrap')?.classList.remove('playing');
-      } else {
-        playback.unlock();
-        btn.innerHTML = SVG_PAUSE;
-        document.getElementById('recordPlayWrap')?.classList.add('playing');
-        spinRate = 0; isStopping = false;
-        await playback.start(
-          { left: result.samples, right: result.samplesR || null, sampleRate: result.sampleRate },
-          0, scrubProgress
-        );
-        lastFrameTime = performance.now();
-      }
-    });
-
-    // ── Scrub and scratch ──
-    const turns = result.turns || 1;
-    const canvasEl = renderer.canvas;
-    const showPosition = () => {
-      const t = fmt(scrubProgress * duration);
+    let lastTimeText = '';
+    const showPosition = p => {
+      const t = fmt(Math.max(0, p) * duration);
       if (t !== lastTimeText) { lastTimeText = t; timeEl.textContent = t; }
-      progressEl.style.transform = `scaleX(${scrubProgress.toFixed(4)})`;
+      progressEl.style.transform = `scaleX(${Math.max(0, Math.min(1, p)).toFixed(4)})`;
     };
-    const redrawIdle = () => {
-      if (!playback.isPlaying) renderer.drawDiscWithGroove(discRotation, scrubProgress, geom);
-      showPosition();
+    const redraw = () => {
+      if (isMine()) {
+        renderer.drawDiscWithGroove(player.discRotation, player.progress, geom);
+        showPosition(player.progress);
+      } else {
+        renderer.drawDiscWithGroove(local.rotation, local.touched ? local.progress : -1, geom);
+        showPosition(local.progress);
+      }
+    };
+    const offFrame = player.onFrame(f => {
+      if (!isMine()) return;
+      renderer.drawDiscWithGroove(f.rotation, f.progress, geom, f.amplitude, f.freq);
+      showPosition(f.progress);
+    });
+
+    // ── Transport, up next ──
+    const btn = document.getElementById('recordPlayBtn');
+    const wrap = document.getElementById('recordPlayWrap');
+    const prevBtn = document.getElementById('recordPrevBtn');
+    const nextBtn = document.getElementById('recordNextBtn');
+    const upNextEl = document.getElementById('upNext');
+    prevBtn.innerHTML = SVG_PREV;
+    nextBtn.innerHTML = SVG_NEXT;
+    btn.disabled = false;
+
+    const goTo = d => {
+      const target = neighbor(d);
+      if (!target) return;
+      if (isMine()) player.skipTo(target);
+      else navigate(`/r/${target}`);
+    };
+    prevBtn.addEventListener('click', () => goTo(-1));
+    nextBtn.addEventListener('click', () => goTo(1));
+    upNextEl.addEventListener('click', e => {
+      if (e.target.closest('#upNextCancel')) { player.cancelCountdown(); return; }
+      goTo(1);
+    });
+
+    let upNextShown = null;
+    const renderUpNext = async () => {
+      const nextId = neighbor(1);
+      if (!nextId) { upNextEl.style.display = 'none'; upNextShown = null; return; }
+      if (upNextShown !== nextId) {
+        upNextShown = nextId;
+        const r = await fetchRecord(nextId).catch(() => null);
+        if (!r || upNextShown !== nextId) return;
+        const art = coverUrl(r);
+        upNextEl.innerHTML = `
+          ${art ? `<img class="up-next-thumb" src="${art}" alt="">` : '<div class="up-next-thumb"></div>'}
+          <div class="up-next-info">
+            <div class="up-next-label">Up Next</div>
+            <div class="up-next-title">${esc(r.title)}</div>
+            ${r.artist ? `<div class="up-next-artist">${esc(r.artist)}</div>` : ''}
+          </div>
+          <button class="up-next-cancel" id="upNextCancel" style="display:none">Cancel</button>`;
+        upNextEl.style.display = 'flex';
+        upNextEl.style.cursor = 'pointer';
+      }
+      const counting = isMine() && player.countdown !== null;
+      const label = upNextEl.querySelector('.up-next-label');
+      const cancel = upNextEl.querySelector('#upNextCancel');
+      if (label) label.textContent = counting ? `Playing next in ${player.countdown}…` : 'Up Next';
+      if (cancel) cancel.style.display = counting ? 'block' : 'none';
     };
 
-    // Progress bar: tap or drag to seek.
+    const renderState = () => {
+      const playing = isMine() && player.playing;
+      btn.innerHTML = playing ? SVG_PAUSE : SVG_PLAY;
+      btn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+      wrap.classList.toggle('playing', playing);
+      if (isMine() && !player.pm.isPlaying) redraw();
+      prevBtn.disabled = !neighbor(-1);
+      nextBtn.disabled = !neighbor(1);
+      renderUpNext();
+    };
+    const offState = player.onChange(renderState);
+
+    btn.addEventListener('click', () => {
+      if (isMine()) player.toggle();
+      else player.playRecord(record, result, queue.includes(id) ? queue : [id], local.progress);
+    });
+
+    // ── Scrub: tap or drag the progress bar ──
     const barEl = progressEl.parentElement;
-    const seekFromBar = (e) => {
+    const seekFromBar = e => {
       const r = barEl.getBoundingClientRect();
-      scrubProgress = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-      if (playback.isPlaying) playback.seek(scrubProgress);
-      redrawIdle();
+      const p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      if (isMine()) { player.seek(p); if (!player.pm.isPlaying) redraw(); }
+      else { local.progress = p; local.touched = true; redraw(); }
     };
-    barEl.addEventListener('pointerdown', (e) => { barEl.setPointerCapture(e.pointerId); seekFromBar(e); });
-    barEl.addEventListener('pointermove', (e) => { if (barEl.hasPointerCapture(e.pointerId)) seekFromBar(e); });
+    barEl.addEventListener('pointerdown', e => { barEl.setPointerCapture(e.pointerId); seekFromBar(e); });
+    barEl.addEventListener('pointermove', e => { if (barEl.hasPointerCapture(e.pointerId)) seekFromBar(e); });
 
-    // Disc: grab the groove and spin it by hand.
+    // ── Scratch: grab the groove and spin it by hand ──
+    const canvasEl = renderer.canvas;
     const discEl = canvasEl.parentElement;
-    const angleAt = (e) => {
+    const angleAt = e => {
       const r = canvasEl.getBoundingClientRect();
       const k = canvasEl.width / r.width, s = canvasEl.width / 520;
       const x = (e.clientX - r.left) * k - geom.cx * s, y = (e.clientY - r.top) * k - geom.cy * s;
       return { angle: Math.atan2(y, x), dist: Math.hypot(x, y), s };
     };
-    let lastAngle = 0, lastMove = 0, scratchVel = 0, idleTimer;
-    discEl.addEventListener('pointerdown', (e) => {
+    let dragging = false, lastAngle = 0, lastMove = 0;
+    discEl.addEventListener('pointerdown', e => {
       const { angle, dist, s } = angleAt(e);
       if (dist < Math.max(12, geom.Rin - 8) * s || dist > (geom.Rout + 8) * s) return;
-      isDragging = true; isStopping = false;
-      lastAngle = angle; lastMove = performance.now(); scratchVel = 0;
+      dragging = true;
+      lastAngle = angle; lastMove = performance.now();
       discEl.setPointerCapture(e.pointerId);
       discEl.classList.add('grabbing');
-      playback.setRate(0);
+      if (isMine()) player.beginDrag();
     });
-    discEl.addEventListener('pointermove', (e) => {
-      if (!isDragging) return;
+    discEl.addEventListener('pointermove', e => {
+      if (!dragging) return;
       const now = performance.now();
       const dt = Math.max(now - lastMove, 1) / 1000;
       const { angle } = angleAt(e);
@@ -685,53 +621,30 @@ export async function recordView({ id }) {
       if (delta > Math.PI) delta -= TAU;
       if (delta < -Math.PI) delta += TAU;
       lastAngle = angle; lastMove = now;
-      scratchVel = 0.6 * scratchVel + 0.4 * (delta / dt);
-      discRotation += delta;
-      scrubProgress = Math.max(0, Math.min(1, scrubProgress + delta / (turns * TAU)));
-      if (playback.isPlaying) playback.setRate(scratchVel / ((turns * TAU) / duration));
-      redrawIdle();
-      clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => { if (isDragging) { scratchVel = 0; playback.setRate(0); } }, 80);
+      if (isMine()) {
+        player.dragBy(delta, dt);
+        if (!player.pm.isPlaying) redraw();
+      } else {
+        local.rotation += delta;
+        local.progress = Math.max(0, Math.min(1, local.progress + delta / (turns * TAU)));
+        local.touched = true;
+        redraw();
+      }
     });
     const endDrag = () => {
-      if (!isDragging) return;
-      isDragging = false;
-      clearTimeout(idleTimer);
+      if (!dragging) return;
+      dragging = false;
       discEl.classList.remove('grabbing');
-      lastFrameTime = performance.now();
-      spinRate = 0; // spin back up from the hand-held position
+      if (isMine()) player.endDrag();
     };
     discEl.addEventListener('pointerup', endDrag);
     discEl.addEventListener('pointercancel', endDrag);
 
-    // Resume AudioContext when screen wakes / tab becomes visible
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') playback.resumeIfSuspended();
-    };
-    document.addEventListener('visibilitychange', onVisibility);
+    redraw();
+    renderState();
 
-    // MediaSession: tells the OS this is a media-playing page (lock screen controls)
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: record.title,
-        artist: record.artist || (record.users?.username ? `@${record.users.username}` : 'Spiral Audio'),
-        album: 'Spiral Audio',
-      });
-      navigator.mediaSession.setActionHandler('play', () => btn.click());
-      navigator.mediaSession.setActionHandler('pause', () => btn.click());
-    }
-
-    // Increment play count atomically (SECURITY DEFINER bypasses RLS so any visitor counts)
-    supabase.rpc('increment_plays', { record_id: id }).then(({ error }) => {
-      if (error) console.error('increment_plays error:', error);
-    });
-
-    return () => {
-      playback.stop();
-      clearTimeout(upNextTimer);
-      document.removeEventListener('visibilitychange', onVisibility);
-      if ('mediaSession' in navigator) navigator.mediaSession.metadata = null;
-    };
+    // Audio keeps playing after you leave; the mini player takes over.
+    return () => { offFrame(); offState(); };
   } catch (err) {
     setStatus(`Failed to load: ${err.message}`, 'error');
   }

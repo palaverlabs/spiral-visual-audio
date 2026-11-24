@@ -2007,3 +2007,30 @@ div.record-card-vinyl { border: 1px solid var(--hw-line); box-sizing: border-box
 .hw-progress span { top: 11px; bottom: 11px; }
 .hw-disc { cursor: grab; touch-action: none; }
 .hw-disc.grabbing { cursor: grabbing; }
+
+/* ── Mini player: keeps the current record playing while you browse ── */
+.mini-player {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 900;
+  display: flex; align-items: center; gap: 12px;
+  height: 64px; padding: 0 16px; padding-bottom: env(safe-area-inset-bottom);
+  background: rgba(14,14,12,0.94); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid #2A2A26; color: #EDEBE4;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+.mini-player[hidden] { display: none; }
+body.has-mini-player { padding-bottom: 64px; }
+.mini-progress { position: absolute; left: 0; right: 0; top: -11px; height: 24px; padding: 11px 0; background-clip: content-box; background-color: #2A2A26; cursor: pointer; touch-action: none; }
+.mini-progress span { position: absolute; left: 0; right: 0; top: 11px; bottom: 11px; background: var(--accent); transform: scaleX(0); transform-origin: left center; will-change: transform; }
+.mini-track { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.mini-cover { width: 40px; height: 40px; flex: none; border-radius: 50%; background: #161614; border: 1px solid #2A2A26; overflow: hidden; }
+.mini-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mini-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mini-title { font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 0.875rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-sub { font-size: 0.6875rem; letter-spacing: 0.06em; text-transform: uppercase; color: #A8A59C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-cancel { color: var(--accent); margin-left: 6px; text-decoration: underline; }
+.mini-controls { display: flex; align-items: center; gap: 4px; flex: none; }
+.mini-btn { width: 40px; height: 40px; display: grid; place-items: center; background: none; border: 1px solid transparent; border-radius: 4px; color: #EDEBE4; cursor: pointer; }
+.mini-btn:hover:not(:disabled) { border-color: #2A2A26; }
+.mini-btn:disabled { opacity: 0.3; cursor: default; }
+.mini-play { border-color: #2A2A26; color: var(--accent); }
+@media (max-width: 520px) { #miniPrev { display: none; } .mini-player { gap: 8px; padding: 0 12px; } }

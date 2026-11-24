@@ -6,6 +6,7 @@ import { SkinManager, SKINS } from '../skin.js';
 import { DEFAULT_ROUT, DEFAULT_RIN, DEFAULT_CX, DEFAULT_CY, TAU, SPIN_SPEED } from '../constants.js';
 import { renderPublishPanel } from '../publish.js';
 import { supabase } from '../supabase.js';
+import { player } from '../player.js';
 
 const STUDIO_HTML = `
   <div class="app">
@@ -545,6 +546,7 @@ class App {
     if (!this.grooveSVG) return;
     const audio = this._getPlaybackAudio();
     if (!audio) { this.debug('Failed to decode audio from groove'); return; }
+    player.stop(); // one thing playing at a time
 
     const speed = parseFloat(document.getElementById('speedSlider').value);
     const chInfo = audio.right ? 'stereo' : 'mono';

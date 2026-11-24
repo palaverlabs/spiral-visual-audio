@@ -1,5 +1,10 @@
 const routes = {};
 let currentCleanup = null;
+let renderSeq = 0;
+const navListeners = new Set();
+
+// Called after every route change with the new path.
+export function onNavigate(fn) { navListeners.add(fn); }
 
 export function route(path, handler) {
   routes[path] = handler;
@@ -18,6 +23,8 @@ export async function redirect(path) {
 
 async function _render(path) {
   if (currentCleanup) { currentCleanup(); currentCleanup = null; }
+  const seq = ++renderSeq;
+  for (const fn of navListeners) fn(path);
 
   let handler = routes[path];
   let params = {};
@@ -36,6 +43,8 @@ async function _render(path) {
   }
 
   const cleanup = await handler(params);
+  // If the user navigated again while this view was loading, tear it down right away.
+  if (seq !== renderSeq) { cleanup?.(); return; }
   currentCleanup = cleanup || null;
 }
 

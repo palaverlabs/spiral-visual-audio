@@ -2,6 +2,22 @@ import './style.css';
 import { route, navigate, redirect, start } from './router.js';
 import { supabase } from './supabase.js';
 import { refreshBell } from './ui.js';
+import { setBrowseQueue } from './player.js';
+import { mountMiniPlayer } from './mini-player.js';
+
+mountMiniPlayer();
+
+// Opening a record from a list makes that list the up-next queue.
+document.addEventListener('click', (e) => {
+  const opened = e.target.closest('[data-record-id], [data-route^="/r/"]');
+  if (!opened) return;
+  const ids = [];
+  for (const el of document.querySelectorAll('#view [data-record-id], #view [data-route^="/r/"]')) {
+    const id = el.dataset.recordId || el.dataset.route.match(/^\/r\/([^/]+)$/)?.[1];
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  setBrowseQueue(ids);
+}, true);
 
 // Hamburger toggle
 const hamburger = document.getElementById('navHamburger');

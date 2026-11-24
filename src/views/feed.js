@@ -62,6 +62,7 @@ export async function feedView() {
       const card = document.createElement('div');
       card.className = 'record-card';
       card.dataset.id = r.id;
+      card.dataset.recordId = r.id;
       card.innerHTML = `${vinyl}
         <div class="record-card-info">
           <div class="record-card-title">${esc(r.title)}</div>
