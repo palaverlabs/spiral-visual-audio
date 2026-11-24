@@ -12,6 +12,8 @@ export function encodeToSVG(samples, opts = {}) {
     cx = 260,
     cy = 260,
     rightChannel = null,
+    onStage = null,    // (label) — pipeline stage, for progress UI
+    onPoints = null,   // (from, to, groovePoints) — called as the groove is cut, in vertex ranges
   } = opts;
 
   const isStereo = rightChannel !== null;
@@ -49,6 +51,7 @@ export function encodeToSVG(samples, opts = {}) {
     sideSamples = null;
   }
 
+  onStage?.('Filtering');
   const emphMid = runPipeline(midSamples);
   const emphSide = isStereo ? runPipeline(sideSamples) : null;
 
@@ -83,8 +86,11 @@ export function encodeToSVG(samples, opts = {}) {
   //   y = cy + (rBase + k·mid)·sinθ + k·side·cosθ
   // This is a rotation of (rBase+k·mid, k·side) by θ — exact inverse via dot products.
   // Mono: standard radial displacement only.
+  onStage?.('Cutting');
   const pathParts = new Array(N);
   const groovePoints = new Float32Array(N * 2);
+  const chunk = Math.max(1, Math.ceil(N / 240));
+  let reported = 0;
   let xErr = 0, yErr = 0;
   let prevXQ = 0, prevYQ = 0;
 
@@ -117,6 +123,7 @@ export function encodeToSVG(samples, opts = {}) {
     prevYQ = yQ;
     groovePoints[i * 2]     = xQ / s;
     groovePoints[i * 2 + 1] = yQ / s;
+    if (onPoints && (i + 1 - reported >= chunk || i === N - 1)) { onPoints(reported, i + 1, groovePoints); reported = i + 1; }
   }
 
   const outerR_s = Math.round((Rout + 8) * s);

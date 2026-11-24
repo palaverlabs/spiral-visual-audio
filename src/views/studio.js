@@ -1,4 +1,4 @@
-import { encodeToSVG, decodeFromSVG } from '../codec.js';
+import { decodeFromSVG } from '../codec.js';
 import { unpackGroove } from '../groovepack.js';
 import { Renderer } from '../renderer.js';
 import { PlaybackManager } from '../playback.js';
@@ -159,6 +159,8 @@ class App {
 
   destroy() {
     cancelAnimationFrame(this._spindownId);
+    cancelAnimationFrame(this._cutAnim);
+    this._encodeWorker?.terminate();
     this.playback.stop();
   }
 
@@ -450,66 +452,121 @@ class App {
     });
   }
 
+  // Encodes in a worker and draws the groove being cut as the points stream back.
+  // The cut is paced to take at least CUT_MIN_MS so it reads as a drawing, never as a flash.
   generateGroove() {
     if (!this.originalAudio) {
       this._statusError('Please load an audio file first');
       return;
     }
+    if (this._encoding) return;
+    this._encoding = true;
 
+    const CUT_MIN_MS = 4000;
     const btn = document.getElementById('generateGroove');
     btn.classList.add('loading');
-    btn.textContent = 'WAIT...';
+    btn.classList.remove('pulse');
     btn.disabled = true;
+    btn.textContent = '0%';
 
+    const quality = parseInt(document.getElementById('qualitySlider').value);
+    const turns = parseInt(document.getElementById('turnsSlider').value);
+    const sensitivity = parseInt(document.getElementById('sensitivitySlider').value);
+    const geom = this._geom();
+    this.spiralTurns = turns;
+
+    if (this.playback.isPlaying) this.playback.stop();
+    cancelAnimationFrame(this._spindownId);
+    this.groovePoints = null;
+    this.discRotation = 0;
+    document.getElementById('dropOverlay')?.classList.add('hidden');
+    this.renderer.canvas.style.cursor = 'default';
+    this.renderer.beginCut();
     this.debug(`Starting encoding: ${this.originalAudio.length} samples...`);
-    this._setStatus(`Encoding ${this.originalAudio.length} samples...`, 'info');
 
-    setTimeout(() => {
-      try {
-        const quality = parseInt(document.getElementById('qualitySlider').value);
-        const turns = parseInt(document.getElementById('turnsSlider').value);
-        const sensitivity = parseInt(document.getElementById('sensitivitySlider').value);
-        this.spiralTurns = turns;
+    const worker = new Worker(new URL('../encode-worker.js', import.meta.url), { type: 'module' });
+    this._encodeWorker = worker;
+    const queue = [];
+    let total = 0, drawn = 0, tStart = 0, stage = 'Preparing', result = null;
 
-        const { svg, groovePoints, debugMsg } = encodeToSVG(this.originalAudio, {
-          sr: this.sampleRate, quality, turns, sensitivity, ...this._geom(),
-          rightChannel: this.originalAudioR,
-        });
-
-        this.grooveSVG = svg;
-        this.groovePoints = groovePoints;
-        const decoded = decodeFromSVG(svg, this._geom());
-        this.decodedAudio = decoded.samples;
-        this.decodedAudioR = decoded.samplesR || null;
-        this.sampleRate = decoded.sampleRate;
-        this.duration = decoded.samples.length / decoded.sampleRate;
-        this.scrubProgress = 0;
-        this.discRotation = 0;
-        this.debug(debugMsg);
-
-        this.renderer.preRenderGroove(groovePoints, this._geom());
-        this.renderer.drawDiscWithGroove(0, -1, this._geom());
-        this.renderer.canvas.style.cursor = 'grab';
-        this._enablePlayback();
-
-        const sizeBytes = svg.length;
-        const sizeLabel = sizeBytes > 1024 * 1024
-          ? `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`
-          : `${(sizeBytes / 1024).toFixed(0)} KB`;
-        this.debug(`Groove generated: ${sizeLabel} SVG`);
-        this._setStatus(`Groove generated (${sizeLabel}). Ready for playback!`, 'success');
-
-        this._showPublishPanel();
-      } catch (error) {
-        this.debug(`Groove generation failed: ${error.message}`);
-        this._setStatus('Failed to generate groove', 'error');
-      }
-
+    const reset = () => {
+      this._encoding = false;
+      this._encodeWorker = null;
+      worker.terminate();
+      cancelAnimationFrame(this._cutAnim);
       btn.classList.remove('loading');
-      btn.classList.remove('pulse');
       btn.textContent = 'ENCODE';
       btn.disabled = false;
-    }, 100);
+    };
+
+    const finish = d => {
+      reset();
+      this.grooveSVG = d.svg;
+      this.groovePoints = d.groovePoints;
+      this.decodedAudio = d.samples;
+      this.decodedAudioR = d.samplesR;
+      this.sampleRate = d.sampleRate;
+      this.duration = d.samples.length / d.sampleRate;
+      this.scrubProgress = 0;
+      this.debug(d.debugMsg);
+
+      this.renderer.endCut();
+      this.renderer.preRenderGroove(d.groovePoints, geom);
+      this.renderer.drawDiscWithGroove(0, -1, geom);
+      this.renderer.canvas.style.cursor = 'grab';
+      this._enablePlayback();
+      // Freshly cut: give it a spin
+      this._spinRate = 1;
+      this._startSpindown();
+
+      const sizeBytes = d.svg.length;
+      const sizeLabel = sizeBytes > 1024 * 1024 ? `${(sizeBytes / 1024 / 1024).toFixed(1)} MB` : `${(sizeBytes / 1024).toFixed(0)} KB`;
+      this.debug(`Groove generated: ${sizeLabel} SVG`);
+      this._setStatus(`Groove cut (${sizeLabel}). Ready for playback!`, 'success');
+      this._showPublishPanel();
+    };
+
+    const frame = () => {
+      if (total) {
+        const target = Math.min(total, Math.ceil(total * (performance.now() - tStart) / CUT_MIN_MS));
+        while (queue.length && drawn < target) {
+          const c = queue[0];
+          const n = Math.min(target - drawn, c.pts.length / 2 - c.off);
+          this.renderer.cutPoints(c.pts.subarray(c.off * 2, (c.off + n) * 2), geom);
+          c.off += n; drawn += n;
+          if (c.off * 2 >= c.pts.length) queue.shift();
+        }
+      }
+      this.renderer.drawCut(geom);
+      const pct = total ? Math.floor((drawn / total) * 100) : 0;
+      btn.textContent = `${pct}%`;
+      const label = total && drawn < total ? 'Cutting groove' : stage;
+      this._setStatus(`${label}… ${pct}%`, 'info');
+      if (result && drawn >= total) { finish(result); return; }
+      this._cutAnim = requestAnimationFrame(frame);
+    };
+
+    worker.onmessage = ({ data }) => {
+      if (data.type === 'stage') stage = data.stage;
+      else if (data.type === 'start') { total = data.total; tStart = performance.now(); }
+      else if (data.type === 'points') queue.push({ pts: data.pts, off: 0 });
+      else if (data.type === 'done') result = data;
+      else if (data.type === 'error') {
+        reset();
+        this.renderer.endCut();
+        this.debug(`Groove generation failed: ${data.message}`);
+        this._setStatus('Failed to generate groove', 'error');
+      }
+    };
+    worker.onerror = e => worker.onmessage({ data: { type: 'error', message: e.message } });
+
+    worker.postMessage({
+      left: this.originalAudio,
+      right: this.originalAudioR || null,
+      opts: { sr: this.sampleRate, quality, turns, sensitivity, ...geom },
+      geom,
+    });
+    this._cutAnim = requestAnimationFrame(frame);
   }
 
   _showPublishPanel() {

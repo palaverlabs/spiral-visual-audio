@@ -47,6 +47,74 @@ export class Renderer {
     if (this.skin.frame === 'alien') this._drawAlienVisor(ctx, W, cxs, cys, Routs, scale);
   }
 
+  // ── Encoding animation: the groove is laid down behind a glowing cutter head ──
+  beginCut() {
+    const W = this.canvas.width;
+    this._cut = document.createElement('canvas');
+    this._cut.width = this._cut.height = W;
+    this._cutHead = null;
+  }
+
+  // pts: Float32Array of x,y groove vertices (disc coords), the next stretch of the cut.
+  cutPoints(pts, { cx = 260, cy = 260 } = {}) {
+    const n = pts.length / 2;
+    if (!this._cut || !n) return;
+    const W = this.canvas.width, b = W / 520, scale = b * (this.skin.frameScale ?? 1);
+    const cxs = cx * b, cys = cy * b;
+    const px = x => cxs + (x - cx) * scale, py = y => cys + (y - cy) * scale;
+    const c = this._cut.getContext('2d');
+    const g = this.skin.groove;
+    const step = Math.max(1, Math.floor(n / 4000));
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath();
+    if (this._cutHead) c.moveTo(this._cutHead[0], this._cutHead[1]);
+    else c.moveTo(px(pts[0]), py(pts[1]));
+    for (let i = 0; i < n; i += step) c.lineTo(px(pts[i * 2]), py(pts[i * 2 + 1]));
+    c.lineTo(px(pts[n * 2 - 2]), py(pts[n * 2 - 1]));
+    c.strokeStyle = g.base; c.lineWidth = 0.55 * scale; c.stroke();
+    const m = (n >> 1) * 2;
+    const hue = ((((Math.atan2(pts[m + 1] - cy, pts[m] - cx) / TAU) * 360 + 360) % 360) * g.hueMult + g.hueShift) % 360;
+    c.strokeStyle = `hsla(${hue}, 85%, 68%, 0.28)`; c.lineWidth = 1.0 * scale; c.stroke();
+    c.strokeStyle = g.glowCore; c.lineWidth = 0.3 * scale; c.stroke();
+    this._cutHead = [px(pts[n * 2 - 2]), py(pts[n * 2 - 1])];
+  }
+
+  drawCut({ Rout = 220, Rin = 40, cx = 260, cy = 260 } = {}) {
+    if (!this._cut) return;
+    const ctx = this.canvas.getContext('2d'), W = this.canvas.width;
+    const b = W / 520, scale = b * (this.skin.frameScale ?? 1);
+    const cxs = cx * b, cys = cy * b;
+    const Routs = (Rout + 8) * scale, Rins = Math.max(12, Rin - 8) * scale, labelR = 45 * scale;
+    const key = `${Rout},${Rin},${cx},${cy}`;
+    ctx.clearRect(0, 0, W, W);
+    if (this.skin.theme === 'spectrum') this._drawRadialEQ(ctx, W, cxs, cys, Routs, scale, null);
+    if (this.skin.frame === 'alien') ctx.drawImage(this._layer('alienBg', key, W, c => this._drawAlienHeadBg(c, W, cxs, cys, Routs, scale)), 0, 0);
+    ctx.drawImage(this._layer('cutBody', key, W, c => this._drawDiscBody(c, W, scale, cxs, cys, Routs, Rins)), 0, 0);
+    ctx.drawImage(this._cut, 0, 0);
+    this._drawLabel(ctx, scale, cxs, cys, labelR, true);
+    ctx.drawImage(this._layer('sheen', key, W, c => this._drawSheen(c, W, cxs, cys, Routs, scale)), 0, 0);
+    if (this._cutHead) {
+      const [hx, hy] = this._cutHead;
+      const [r, g, bl] = this.skin.stylus.bloomFill;
+      const ang = Math.atan2(hy - cys, hx - cxs);
+      const armR = Routs + 40 * scale;
+      ctx.save();
+      // Cutter arm reaching in from beyond the rim
+      ctx.strokeStyle = `rgba(${r},${g},${bl},0.4)`; ctx.lineWidth = 1.5 * scale;
+      ctx.beginPath(); ctx.moveTo(cxs + Math.cos(ang) * armR, cys + Math.sin(ang) * armR); ctx.lineTo(hx, hy); ctx.stroke();
+      const gr = ctx.createRadialGradient(hx, hy, 0, hx, hy, 28 * scale);
+      gr.addColorStop(0, `rgba(${r},${g},${bl},0.95)`);
+      gr.addColorStop(0.2, `rgba(${r},${g},${bl},0.4)`);
+      gr.addColorStop(1, `rgba(${r},${g},${bl},0)`);
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(hx, hy, 28 * scale, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(hx, hy, 2.2 * scale, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
+    if (this.skin.frame === 'alien') ctx.drawImage(this._layer('alienVisor', key, W, c => this._drawAlienVisor(c, W, cxs, cys, Routs, scale)), 0, 0);
+  }
+
+  endCut() { this._cut = null; this._cutHead = null; }
+
   preRenderGroove(groovePoints, { cx = 260, cy = 260 } = {}) {
     const { canvas } = this;
     const W = canvas.width;
