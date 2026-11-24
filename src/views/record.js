@@ -32,32 +32,48 @@ const SVG_NEXT = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentC
 
 export async function recordView({ id }) {
   document.getElementById('view').innerHTML = `
-    <div class="record-page">
-      <div class="record-hero">
-        <div class="record-disc-wrap">
-          <canvas id="recordCanvas" width="1000" height="1000"></canvas>
-        </div>
-      </div>
-      <div class="record-info">
-        <div class="status-line info" id="recordStatus">Loading record...</div>
-        <h1 id="recordTitle"></h1>
-        <div class="record-artist" id="recordArtist"></div>
-        <div class="record-meta" id="recordMeta"></div>
-        <div class="record-transport">
-          <button class="skip-btn" id="recordPrevBtn" disabled></button>
-          <div class="play-wrap" id="recordPlayWrap">
-            <div class="play-ring"></div>
-            <button class="play-btn" id="recordPlayBtn" disabled></button>
+    <div class="record-page hw">
+      <section class="hw-top">
+        <div class="hw-deck">
+          <img class="hw-glow" id="hwGlow" alt="" aria-hidden="true" hidden>
+          <div class="hw-vignette" aria-hidden="true"></div>
+          <div class="hw-gridlines" aria-hidden="true"></div>
+          <div class="hw-head"><span class="hw-label">A1 · PLAYBACK</span><span class="hw-label" id="hwSpecs"></span></div>
+          <div class="hw-disc">
+            <div class="hw-disc-ring" aria-hidden="true"></div>
+            <canvas id="recordCanvas" width="1000" height="1000"></canvas>
+            <span class="hw-tick" aria-hidden="true"></span>
+            <span class="hw-deg left" aria-hidden="true">270</span><span class="hw-deg right" aria-hidden="true">090</span>
           </div>
-          <button class="skip-btn" id="recordNextBtn" disabled></button>
-          <span class="time-display">
-            <span id="recordCurrentTime">0:00</span>
-            <span class="t-sep"> / </span>
-            <span id="recordTotalTime">0:00</span>
-          </span>
+          <div class="hw-transport">
+            <div class="play-wrap" id="recordPlayWrap">
+              <div class="play-ring"></div>
+              <button class="play-btn" id="recordPlayBtn" disabled aria-label="Play"></button>
+            </div>
+            <button class="skip-btn" id="recordPrevBtn" disabled aria-label="Previous record"></button>
+            <button class="skip-btn" id="recordNextBtn" disabled aria-label="Next record"></button>
+            <div class="hw-timebar">
+              <span id="recordCurrentTime">0:00</span>
+              <span class="hw-progress"><span id="hwProgress"></span></span>
+              <span id="recordTotalTime" class="dim">0:00</span>
+            </div>
+          </div>
         </div>
-        <div class="up-next" id="upNext" style="display:none"></div>
-      </div>
+        <aside class="hw-release">
+          <div class="hw-head"><span class="hw-label">B1 · RELEASE</span><span class="status-line info" id="recordStatus">Loading</span></div>
+          <h1 id="recordTitle"></h1>
+          <div class="record-artist" id="recordArtist"></div>
+          <div class="record-meta" id="recordMeta"></div>
+          <img class="hw-cover" id="recordCover" alt="" hidden>
+          <div id="hwEdition"></div>
+          <div class="up-next" id="upNext" style="display:none"></div>
+        </aside>
+      </section>
+      <section class="hw-strip" id="hwStrip"></section>
+      <section class="hw-lower">
+        <div class="hw-book" id="hwBook"></div>
+        <div class="hw-side" id="hwSide"></div>
+      </section>
     </div>`;
 
   const setStatus = (msg, type = 'info') => {
@@ -88,13 +104,17 @@ export async function recordView({ id }) {
   const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
   // Cover art
-  if (record.cover_path) {
-    const coverUrl = supabase.storage.from('records').getPublicUrl(record.cover_path).data.publicUrl;
-    const coverEl = document.createElement('img');
-    coverEl.className = 'record-cover-art';
+  // Cover art, and its blurred glow behind the deck
+  const coverPath = record.cover_path || record.thumbnail_path;
+  if (coverPath) {
+    const coverUrl = supabase.storage.from('records').getPublicUrl(coverPath).data.publicUrl;
+    const coverEl = document.getElementById('recordCover');
     coverEl.src = coverUrl;
-    coverEl.alt = record.title;
-    document.getElementById('recordTitle').before(coverEl);
+    coverEl.alt = `Cover art for ${record.title}`;
+    coverEl.hidden = false;
+    const glow = document.getElementById('hwGlow');
+    glow.src = coverUrl;
+    glow.hidden = false;
   }
 
   document.getElementById('recordTitle').textContent = record.title;
@@ -155,17 +175,14 @@ export async function recordView({ id }) {
 
   // Edition + marketplace UI (price strip, actions, your copies, history, listings, supporters, activity)
   if (record.edition_size) {
-    const marketEl = document.createElement('section');
-    marketEl.className = 'release-market';
-    marketEl.id = 'releaseMarket';
-    document.getElementById('upNext').after(marketEl);
+    const marketEl = document.querySelector('.record-page');
 
     const fees = await getFees();
     const ui = { range: 'all', filter: '' };
     let data = null;
 
     const load = async () => {
-      const [stats, listings, owners, txs, me, offers, want] = await Promise.all([
+      const [stats, listings, owners, txs, me, offers, want, ledger] = await Promise.all([
         supabase.from('release_market_stats').select('*').eq('record_id', id).maybeSingle(),
         supabase.from('listings')
           .select('id, ask_price, status, created_at, resolved_at, seller_id, collections!inner(id, edition_number, record_id), seller:users!listings_seller_id_fkey(username)')
@@ -178,12 +195,13 @@ export async function recordView({ id }) {
           .eq('record_id', id)
           .order('created_at', { ascending: false })
           .limit(200),
-        user ? supabase.from('users').select('balance').eq('id', user.id).single() : Promise.resolve({ data: null }),
+        user ? supabase.from('users').select('balance, held_balance').eq('id', user.id).single() : Promise.resolve({ data: null }),
         supabase.from('offers')
           .select('id, price, edition_number, expires_at, created_at, buyer_id, buyer:users!offers_buyer_id_fkey(username)')
           .eq('record_id', id).eq('status', 'active').gt('expires_at', new Date().toISOString())
           .order('price', { ascending: false }),
         user ? supabase.from('wants').select('max_price').eq('user_id', user.id).eq('record_id', id).maybeSingle() : Promise.resolve({ data: null }),
+        supabase.rpc('verify_ledger'),
       ]);
       const allListings = listings.data ?? [];
       data = {
@@ -193,6 +211,8 @@ export async function recordView({ id }) {
         owners: owners.data ?? [],
         txs: txs.data ?? [],
         balance: me.data?.balance ?? null,
+        held: me.data?.held_balance ?? 0,
+        ledgerOk: ledger.error ? null : ledger.data == null,
         offers: offers.data ?? [],
         want: want.data ?? null,
       };
@@ -219,130 +239,122 @@ export async function recordView({ id }) {
         if (copies.length) { sellNow = { offer: o, copy: copies[0] }; break; }
       }
 
-      // 1. Edition line
-      let html = `<div class="record-edition">
-        <span class="edition-label">Edition of ${size} · ${minted} minted · ${ownerCount} ${ownerCount === 1 ? 'owner' : 'owners'}</span>
-        <span class="edition-badge rarity ${rarity.class}">${rarity.label}</span>
-        ${left <= 0 ? `<span class="edition-badge sold-out">Sold Out</span>` : ''}
-        ${owned.length ? `<span class="edition-badge owned">You own ${owned.map(o => `#${o.edition_number}`).join(', ')}</span>` : ''}
-      </div>`;
+      const pad = (n, w = 3) => n == null ? '---' : (n < 10 ** w ? String(n).padStart(w, '0') : n.toLocaleString());
+      const edW = size >= 100 ? 3 : 2;
+      const ed = n => `#${String(n).padStart(edW, '0')}`;
+      const star = n => (n === 1 || (n === size && size > 1)) ? ` <span class="hw-star" title="${n === 1 ? 'First' : 'Last'} edition">★</span>` : '';
+      const edLink = n => `<a class="edition-link" href="/r/${id}/e/${n}" data-route="/r/${id}/e/${n}">${ed(n)}</a>`;
+      const age = ts => timeAgo(ts).replace(' ago', '').replace('just now', 'now').toUpperCase();
+      const handle = u => u?.username ? userLink(u) : 'collector';
+      const ownedNums = new Set(owned.map(o => o.edition_number));
 
-      // 2. Price strip
-      html += `<div class="price-strip">
-        <div class="price-cell"><span class="price-label">Lowest ask</span><span class="price-value">${cr(stats.floor_ask)}</span></div>
-        <div class="price-cell"><span class="price-label">Highest offer</span><span class="price-value">${cr(data.offers[0]?.price)}</span>${data.offers.length ? `<span class="price-sub">${data.offers.length} ${data.offers.length === 1 ? 'offer' : 'offers'}</span>` : ''}</div>
-        <div class="price-cell"><span class="price-label">Last sale</span><span class="price-value">${cr(lastSale)}</span>${stats.last_sale_at ? `<span class="price-sub">${timeAgo(stats.last_sale_at)}</span>` : ''}</div>
-        <div class="price-cell"><span class="price-label">Original</span><span class="price-value">${cr(record.price)}</span>${premium != null ? `<span class="price-sub ${premium >= 0 ? 'up' : 'down'}">${premium >= 0 ? '+' : ''}${premium}% last sale</span>` : ''}</div>
-      </div>`;
-
-      // 3. Actions
-      html += `<div class="market-actions">`;
-      if (!user) {
-        html += `<span class="edition-sign-in"><a href="/auth" data-route="/auth">Sign in</a> to collect or buy</span>`;
+      // ── B1 · Release: edition meter, actions, your copies ──
+      let rel = `<div class="hw-meter">
+        <div class="hw-meter-head"><span>EDITION</span><span><b>${pad(minted, 2)}</b>/${size} MINTED · ${ownerCount} ${ownerCount === 1 ? 'HOLDER' : 'HOLDERS'}</span></div>`;
+      if (size <= 50) {
+        rel += `<div class="hw-cells" style="grid-template-columns: repeat(${Math.min(size, 10)}, minmax(0, 1fr))">${
+          Array.from({ length: size }, (_, i) => `<span class="hw-cell${i < minted ? ' on' : ''}${ownedNums.has(i + 1) ? ' mine' : ''}" title="${ed(i + 1)}${i < minted ? ' minted' : ''}"></span>`).join('')}</div>`;
       } else {
-        if (left > 0 && record.price) html += `<button class="action-btn" id="collectBtn">Collect #${minted + 1} from artist — ${cr(record.price)}</button>`;
-        if (floor) html += `<button class="action-btn" id="buyNowBtn">Buy now #${floor.collections.edition_number} — ${cr(floor.ask_price)}</button>`;
-        if (minted > 0) html += `<button class="action-btn text-btn" id="makeOfferBtn">Make offer</button>`;
-        if (sellNow) html += `<button class="action-btn" id="sellNowBtn">Sell now #${sellNow.copy.edition_number} — ${cr(sellNow.offer.price)}</button>`;
-        html += data.want
-          ? `<button class="action-btn text-btn" id="unwantBtn" title="Remove from wantlist">On your wantlist${data.want.max_price ? ` · under ${cr(data.want.max_price)}` : ''} ✕</button>`
-          : `<button class="action-btn text-btn" id="wantBtn">Add to wantlist</button>`;
-        if (balance != null) html += `<span class="balance-note">Balance ${cr(balance)}</span>`;
+        rel += `<div class="hw-bar"><span style="width:${(minted / size * 100).toFixed(1)}%"></span></div>`;
       }
-      html += `</div>`;
+      rel += `<div class="hw-meter-foot"><span>CLASS · ${rarity.label.toUpperCase()}</span>${left <= 0 ? '<span class="hw-accent">SOLD OUT</span>' : `<span>${left} LEFT</span>`}</div>
+        ${owned.length ? `<div class="hw-meter-foot"><span>YOU HOLD ${owned.map(o => ed(o.edition_number)).join(' ')}</span></div>` : ''}
+      </div>`;
 
-      // 4. Your copies
+      rel += `<div class="hw-actions">`;
+      if (!user) {
+        rel += `<a class="hw-btn" href="/auth" data-route="/auth"><span>SIGN IN TO COLLECT</span><span>→</span></a>`;
+      } else {
+        if (left > 0 && record.price) rel += `<button class="hw-btn primary" id="collectBtn"><span>COLLECT ${ed(minted + 1)}</span><span>${pad(record.price)} CR</span></button>`;
+        if (floor) rel += `<button class="hw-btn" id="buyNowBtn"><span>BUY ${ed(floor.collections.edition_number)}</span><span>${pad(floor.ask_price)} CR</span></button>`;
+        if (sellNow) rel += `<button class="hw-btn accent" id="sellNowBtn"><span>SELL ${ed(sellNow.copy.edition_number)} NOW</span><span>${pad(sellNow.offer.price)} CR</span></button>`;
+        rel += `<div class="hw-btn-row">
+          ${minted > 0 ? `<button class="hw-btn small" id="makeOfferBtn">MAKE OFFER</button>` : ''}
+          ${data.want
+            ? `<button class="hw-btn small" id="unwantBtn" title="Remove from wantlist">WANTED${data.want.max_price ? ` ≤${pad(data.want.max_price)}` : ''} ✕</button>`
+            : `<button class="hw-btn small" id="wantBtn">+ WANTLIST</button>`}
+        </div>`;
+        if (balance != null) rel += `<div class="hw-balance">BAL <b>${pad(balance, 4)}</b> CR${data.held ? ` · ${pad(data.held)} HELD` : ''}</div>`;
+      }
+      rel += `</div>`;
+
       if (owned.length) {
-        html += `<div class="market-section"><div class="profile-section-heading">Your copies</div>`;
-        html += owned.map(o => {
+        rel += `<div class="hw-copies"><div class="hw-label">B2 · YOUR COPIES</div>${owned.map(o => {
           const l = myListingFor.get(o.id);
-          const edLink = `<a class="edition-link" href="/r/${id}/e/${o.edition_number}" data-route="/r/${id}/e/${o.edition_number}">#${o.edition_number}</a>`;
-          return l ? `
-            <div class="resale-row">${edLink} ${specialBadge(o.edition_number, size)}
-              <span class="edition-badge listed">Listed at ${cr(l.ask_price)}</span>
-              <button class="action-btn text-btn cancel-listing-btn" data-listing-id="${l.id}">Cancel listing</button>
-            </div>` : `
-            <div class="resale-row">${edLink} ${specialBadge(o.edition_number, size)}
-              <input type="number" class="resale-price-input" data-collection-id="${o.id}" placeholder="Ask (cr)" min="1" step="1">
-              <button class="action-btn list-btn" data-collection-id="${o.id}">List</button>
-              <span class="receive-note" data-receive-for="${o.id}">${[stats.floor_ask ? `Floor ${cr(stats.floor_ask)}` : '', lastSale ? `Last sale ${cr(lastSale)}` : ''].filter(Boolean).join(' · ')}</span>
-            </div>`;
-        }).join('');
-        html += `</div>`;
+          return l ? `<div class="hw-copy">${edLink(o.edition_number)}${star(o.edition_number)}
+              <span class="hw-tag">LISTED ${pad(l.ask_price)}</span>
+              <button class="hw-btn small cancel-listing-btn" data-listing-id="${l.id}">CANCEL</button></div>`
+            : `<div class="hw-copy">${edLink(o.edition_number)}${star(o.edition_number)}
+              <input type="number" class="resale-price-input hw-input" data-collection-id="${o.id}" placeholder="ASK" min="1" step="1" aria-label="Ask price for ${ed(o.edition_number)}">
+              <button class="hw-btn small list-btn" data-collection-id="${o.id}">LIST</button>
+              <span class="receive-note hw-note" data-receive-for="${o.id}">${[stats.floor_ask ? `FLOOR ${pad(stats.floor_ask)}` : '', lastSale ? `LAST ${pad(lastSale)}` : ''].filter(Boolean).join(' · ')}</span></div>`;
+        }).join('')}</div>`;
       }
+      document.getElementById('hwEdition').innerHTML = rel;
 
-      // 5. Price history
+      // ── Price readout ──
+      document.getElementById('hwStrip').innerHTML = `
+        <div class="hw-cellx"><span class="hw-label">LOWEST ASK</span><span class="hw-num">${pad(stats.floor_ask)}</span></div>
+        <div class="hw-cellx"><span class="hw-label">HIGHEST OFFER${data.offers.length ? ` · ${data.offers.length}` : ''}</span><span class="hw-num${data.offers.length ? '' : ' dim'}">${pad(data.offers[0]?.price)}</span></div>
+        <div class="hw-cellx"><span class="hw-label">LAST SALE${stats.last_sale_at ? ` · ${age(stats.last_sale_at)}` : ''}</span><span class="hw-num${lastSale == null ? ' dim' : ''}">${pad(lastSale)}</span></div>
+        <div class="hw-cellx"><span class="hw-label">ORIGINAL · DELTA</span><span class="hw-num">${pad(record.price)}${premium != null ? ` <span class="hw-delta ${premium >= 0 ? 'up' : 'down'}">${premium >= 0 ? '+' : ''}${premium}%</span>` : ''}</span></div>`;
+
+      // ── C1 · Order book (asks + bids) and C2 · price ──
+      const asks = ui.filter ? active.filter(l => String(l.collections.edition_number) === ui.filter) : active;
+      const bids = ui.filter ? data.offers.filter(o => o.edition_number == null || String(o.edition_number) === ui.filter) : data.offers;
+      const askRows = asks.map(l => `<tr>
+          <td class="hw-accent">ASK</td>
+          <td>${edLink(l.collections.edition_number)}${star(l.collections.edition_number)}</td>
+          <td>${handle(l.seller)}</td>
+          <td>${pad(l.ask_price)}</td>
+          <td class="dim">${age(l.created_at)}</td>
+          <td>${l.seller_id === user?.id ? '<span class="dim">YOURS</span>' : `<button class="hw-btn small buy-listing-btn" data-listing-id="${l.id}" ${!user ? 'disabled' : ''}>BUY</button>`}</td>
+        </tr>`).join('');
+      const bidRows = bids.map(o => {
+        const mine = o.buyer_id === user?.id;
+        const canAccept = !mine && eligibleCopies(o, owned, myListingFor).length > 0;
+        const canDecline = canAccept && o.edition_number != null;
+        return `<tr>
+          <td>BID</td>
+          <td>${o.edition_number ? edLink(o.edition_number) : 'ANY'}</td>
+          <td>${handle(o.buyer)}</td>
+          <td>${pad(o.price)}</td>
+          <td class="dim">${timeLeft(o.expires_at).toUpperCase()}</td>
+          <td>${mine ? `<button class="hw-btn small cancel-offer-btn" data-offer-id="${o.id}">CANCEL</button>`
+            : canAccept ? `${canDecline ? `<button class="hw-btn small decline-offer-btn" data-offer-id="${o.id}">DECLINE</button> ` : ''}<button class="hw-btn small accent accept-offer-btn" data-offer-id="${o.id}">ACCEPT</button>` : ''}</td>
+        </tr>`;
+      }).join('');
       const cutoff = ui.range === 'all' ? 0 : Date.now() - (ui.range === '30d' ? 30 : 90) * 86400e3;
       const sales = txs.filter(t => t.type === 'secondary' && new Date(t.created_at).getTime() >= cutoff).reverse();
-      html += `<div class="market-section">
-        <div class="section-head"><div class="profile-section-heading">Price history</div>
-          <div class="range-tabs">${['30d', '90d', 'all'].map(r => `<button class="range-tab${ui.range === r ? ' active' : ''}" data-range="${r}">${r === 'all' ? 'All' : r}</button>`).join('')}</div>
-        </div>
-        ${priceChart(sales, record.price)}
-      </div>`;
+      document.getElementById('hwBook').innerHTML = `
+        <div class="hw-head"><span class="hw-label">C1 · ORDER BOOK</span>
+          ${active.length + data.offers.length ? `<input type="number" class="hw-input" id="editionFilter" placeholder="ED #" min="1" value="${esc(ui.filter)}" aria-label="Filter by edition number">` : ''}</div>
+        <div class="hw-scroll"><table class="hw-table">
+          <thead><tr><th>SIDE</th><th>ED.</th><th>HOLDER</th><th>PRICE</th><th>AGE</th><th></th></tr></thead>
+          <tbody>${askRows || `<tr><td class="hw-accent">ASK</td><td colspan="5" class="dim">${ui.filter ? `NO ASK FOR #${esc(ui.filter)}` : 'NO COPIES LISTED'}</td></tr>`}
+          ${bidRows || `<tr><td>BID</td><td colspan="5" class="dim">NO OPEN OFFERS</td></tr>`}</tbody>
+        </table></div>
+        <div class="hw-head hw-gap"><span class="hw-label">C2 · PRICE · ${ui.range.toUpperCase()}</span>
+          <div class="range-tabs">${['30d', '90d', 'all'].map(r => `<button class="range-tab${ui.range === r ? ' active' : ''}" data-range="${r}">${r.toUpperCase()}</button>`).join('')}</div></div>
+        ${priceChart(sales, record.price)}`;
 
-      // 6. Listings table
-      const shown = ui.filter ? active.filter(l => String(l.collections.edition_number) === ui.filter) : active;
-      html += `<div class="market-section">
-        <div class="section-head"><div class="profile-section-heading">Listings (${active.length})</div>
-          ${active.length ? `<input type="number" class="edition-filter" id="editionFilter" placeholder="Edition #" min="1" value="${esc(ui.filter)}">` : ''}
-        </div>
-        ${shown.length ? `<table class="market-table">
-          <thead><tr><th>Edition</th><th>Seller</th><th>Ask</th><th>Listed</th><th></th></tr></thead>
-          <tbody>${shown.map(l => `<tr>
-            <td><a class="edition-link" href="/r/${id}/e/${l.collections.edition_number}" data-route="/r/${id}/e/${l.collections.edition_number}">#${l.collections.edition_number}</a> ${specialBadge(l.collections.edition_number, size)}</td>
-            <td>${userLink(l.seller)}</td>
-            <td>${cr(l.ask_price)}</td>
-            <td>${timeAgo(l.created_at)}</td>
-            <td>${l.seller_id === user?.id ? '<span class="muted">Yours</span>' : `<button class="action-btn buy-listing-btn" data-listing-id="${l.id}" ${!user ? 'disabled' : ''}>Buy</button>`}</td>
-          </tr>`).join('')}</tbody></table>`
-          : `<div class="chart-empty">${ui.filter ? `No listing for #${esc(ui.filter)}` : 'No copies listed'}</div>`}
-      </div>`;
-
-      // 6b. Offers
-      if (data.offers.length) {
-        html += `<div class="market-section">
-          <div class="section-head"><div class="profile-section-heading">Offers (${data.offers.length})</div></div>
-          <table class="market-table">
-            <thead><tr><th>Offer</th><th>Edition</th><th>From</th><th>Expires</th><th></th></tr></thead>
-            <tbody>${data.offers.map(o => {
-              const mine = o.buyer_id === user?.id;
-              const canAccept = !mine && eligibleCopies(o, owned, myListingFor).length > 0;
-              const canDecline = canAccept && o.edition_number != null;
-              return `<tr>
-                <td>${cr(o.price)}</td>
-                <td>${o.edition_number ? `<a class="edition-link" href="/r/${id}/e/${o.edition_number}" data-route="/r/${id}/e/${o.edition_number}">#${o.edition_number}</a>` : 'Any'}</td>
-                <td>${userLink(o.buyer)}</td>
-                <td>${timeLeft(o.expires_at)}</td>
-                <td>${mine ? `<button class="action-btn text-btn cancel-offer-btn" data-offer-id="${o.id}">Cancel</button>`
-                  : canAccept ? `${canDecline ? `<button class="action-btn text-btn decline-offer-btn" data-offer-id="${o.id}">Decline</button> ` : ''}<button class="action-btn accept-offer-btn" data-offer-id="${o.id}">Accept</button>` : ''}</td>
-              </tr>`;
-            }).join('')}</tbody></table>
+      // ── D1 · Holders and D2 · Log ──
+      const log = [
+        ...txs.map(t => ({ at: t.created_at, text: t.type === 'primary'
+          ? `MINT ${edLink(t.edition_number)} → ${handle(t.buyer)} ${pad(t.price)}`
+          : `SALE ${edLink(t.edition_number)} ${handle(t.seller)} → ${handle(t.buyer)} ${pad(t.price)}` })),
+        ...data.allListings.map(l => ({ at: l.created_at, text: `LIST ${edLink(l.collections.edition_number)} ${handle(l.seller)} ${pad(l.ask_price)}` })),
+        ...data.allListings.filter(l => l.status === 'cancelled' && l.resolved_at).map(l => ({ at: l.resolved_at, text: `DELIST ${edLink(l.collections.edition_number)} ${handle(l.seller)}` })),
+      ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 20);
+      document.getElementById('hwSide').innerHTML = `
+        <div class="hw-label">D1 · HOLDERS</div>
+        ${owners.length ? `<div class="hw-list">${owners.map(o => `<div class="hw-row"><span>${edLink(o.edition_number)}${star(o.edition_number)}</span><span>${handle(o.users)}</span></div>`).join('')}</div>`
+          : '<div class="hw-row dim">NONE MINTED YET</div>'}
+        <div class="hw-label hw-gap">D2 · LOG</div>
+        <div class="hw-log">${log.map(e => `<div><span class="dim">${age(e.at)}</span><span>${e.text}</span></div>`).join('') || '<div class="dim">NO ACTIVITY</div>'}
+          <div class="hw-ledger"><span>LEDGER</span>${data.ledgerOk === false ? '<span class="down">● CHECK FAILED</span>' : data.ledgerOk ? '<span class="hw-accent">● VERIFIED</span>' : '<span class="dim">● —</span>'}</div>
         </div>`;
-      }
 
-      // 7. Supporters wall
-      if (owners.length) {
-        html += `<div class="market-section"><div class="profile-section-heading">Supporters</div>
-          <div class="supporters">${owners.map(o => `<span class="supporter"><a class="edition-link" href="/r/${id}/e/${o.edition_number}" data-route="/r/${id}/e/${o.edition_number}">#${o.edition_number}</a> ${userLink(o.users)}</span>`).join('')}</div>
-        </div>`;
-      }
-
-      // 8. Activity
-      const events = [
-        ...txs.map(t => ({ at: t.created_at, html: t.type === 'primary'
-          ? `${userLink(t.buyer)} collected #${t.edition_number} for ${cr(t.price)}`
-          : `${userLink(t.buyer)} bought #${t.edition_number} from ${userLink(t.seller)} for ${cr(t.price)}` })),
-        ...data.allListings.map(l => ({ at: l.created_at, html: `${userLink(l.seller)} listed #${l.collections.edition_number} for ${cr(l.ask_price)}` })),
-        ...data.allListings.filter(l => l.status === 'cancelled' && l.resolved_at).map(l => ({ at: l.resolved_at, html: `${userLink(l.seller)} cancelled the listing for #${l.collections.edition_number}` })),
-      ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 15);
-      if (events.length) {
-        html += `<div class="market-section"><div class="profile-section-heading">Activity</div>
-          <ul class="activity-list">${events.map(e => `<li><span>${e.html}</span><span class="muted">${timeAgo(e.at)}</span></li>`).join('')}</ul>
-        </div>`;
-      }
-
-      marketEl.innerHTML = html;
       bind({ floor, minted, sellNow });
     };
 
@@ -496,7 +508,9 @@ export async function recordView({ id }) {
     const duration = result.samples.length / result.sampleRate;
 
     document.getElementById('recordTotalTime').textContent = fmt(duration);
-    setStatus('Ready', 'success');
+    document.getElementById('hwSpecs').textContent =
+      `${(result.sampleRate / 1000).toFixed(1)} KHZ · ${result.samplesR ? 'STEREO' : 'MONO'} · ${Math.round(result.turns)} TURNS`;
+    setStatus('', 'success');
 
     // Up next
     let upNextTimer = null;
@@ -582,6 +596,8 @@ export async function recordView({ id }) {
         renderer.drawDiscWithGroove(discRotation, scrubProgress, geom, amplitude, playback.getFrequencyData());
         const el = document.getElementById('recordCurrentTime');
         if (el) el.textContent = fmt(audioTimePosition);
+        const bar = document.getElementById('hwProgress');
+        if (bar) bar.style.width = `${(Math.max(0, Math.min(1, progress)) * 100).toFixed(2)}%`;
       },
       onStop: () => {
         const btn = document.getElementById('recordPlayBtn');
