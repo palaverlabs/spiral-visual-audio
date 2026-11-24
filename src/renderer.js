@@ -13,8 +13,6 @@ export class Renderer {
     this.skin = SKINS.classic.canvas;
     this._groovePoints = null;
     this._grooveGeom = {};
-    this._eqPeaks = null;
-    this._eqPeakHold = null;
   }
 
   setSkin(canvasSkin, groovePoints = null, geom = {}) {
@@ -32,11 +30,6 @@ export class Renderer {
     const ctx = canvas.getContext('2d');
     const W = canvas.width;
 
-    if (this.skin.theme === 'spectrum') {
-      this._drawSpectrumEQ(ctx, W, freqData);
-      return;
-    }
-
     const baseScale = W / 520;
     const fs = this.skin.frameScale ?? 1.0;
     const scale = baseScale * fs;
@@ -46,6 +39,7 @@ export class Renderer {
     const labelR = 45 * scale;
 
     ctx.clearRect(0, 0, W, W);
+    if (this.skin.theme === 'spectrum') this._drawRadialEQ(ctx, W, cxs, cys, Routs, scale, freqData);
     if (this.skin.frame === 'alien') this._drawAlienHeadBg(ctx, W, cxs, cys, Routs, scale);
     this._drawDiscBody(ctx, W, scale, cxs, cys, Routs, Rins);
     this._drawLabel(ctx, scale, cxs, cys, labelR, false);
@@ -153,10 +147,6 @@ export class Renderer {
     const ctx = canvas.getContext('2d');
     const W = canvas.width;
 
-    if (this.skin.theme === 'spectrum') {
-      this._drawSpectrumEQ(ctx, W, freqData);
-      return;
-    }
     const baseScale = W / 520;
     const fs = this.skin.frameScale ?? 1.0;
     const scale = baseScale * fs;
@@ -169,6 +159,7 @@ export class Renderer {
     const alien = this.skin.frame === 'alien';
 
     ctx.clearRect(0, 0, W, W);
+    if (this.skin.theme === 'spectrum') this._drawRadialEQ(ctx, W, cxs, cys, Routs, scale, freqData);
     if (alien) ctx.drawImage(this._layer('alienBg', geomKey, W, c => this._drawAlienHeadBg(c, W, cxs, cys, Routs, scale)), 0, 0);
 
     // --- Rotating disc: body, groove, surface sheen and label, pre-composited once ---
@@ -496,128 +487,76 @@ export class Renderer {
     ctx.fillStyle = '#000'; ctx.fill();
   }
 
-  _drawSpectrumEQ(ctx, W, freqData) {
-    const NUM_BARS = 32;
-    const NUM_SEGS = 22;
-    const FALL_RATE = 0.010;
+  // EQ skin: a ring of LED segments around the record, driven by the live spectrum.
+  // Mirrored left/right with bass at the top, so the ring reads as one symmetric shape.
+  _drawRadialEQ(ctx, W, cxs, cys, Routs, scale, freqData) {
+    const BANDS = 36;            // per side
+    const SEGS = 12;
+    const bars = BANDS * 2;
+    const r0 = Routs + 10 * scale;
+    const len = Math.max(0, W / 2 - r0 - 6 * scale);
+    const segLen = len / SEGS;
+    const barArc = TAU / bars;
+    const barW = Math.max(2, r0 * barArc * 0.62);
 
-    const totalW  = W * 0.90;
-    const startX  = (W - totalW) / 2;
-    const barW    = totalW / NUM_BARS;
-    const gap     = barW * 0.11;
-    const netBarW = barW - gap * 2;
-    const maxBarH = W * 0.40;
-    const baseY   = W * 0.66;
-    const segH    = maxBarH / NUM_SEGS;
-    const segGap  = Math.max(1.5, segH * 0.10);
+    if (!this._eqLevels || this._eqLevels.length !== BANDS) {
+      this._eqLevels = new Float32Array(BANDS);
+      this._eqPeaks = new Float32Array(BANDS);
+      this._eqHold = new Uint8Array(BANDS);
+    }
+    const levels = this._eqLevels, peaks = this._eqPeaks, hold = this._eqHold;
 
-    // Background
-    ctx.clearRect(0, 0, W, W);
-    ctx.fillStyle = '#030504';
-    ctx.fillRect(0, 0, W, W);
-
-    // Floor line
-    ctx.fillStyle = 'rgba(0,180,50,0.18)';
-    ctx.fillRect(startX, baseY + 2, totalW, 2);
-
-    // Init peak state
-    if (!this._eqPeaks || this._eqPeaks.length !== NUM_BARS) {
-      this._eqPeaks    = new Float32Array(NUM_BARS);
-      this._eqPeakHold = new Uint8Array(NUM_BARS);   // hold-frames counter
+    // Log-spaced bands from ~40 Hz to ~16 kHz (bin width ≈ 46 Hz at fftSize 1024).
+    for (let i = 0; i < BANDS; i++) {
+      let v = 0;
+      if (freqData) {
+        const binHz = 46;
+        const f0 = 40 * Math.pow(400, i / BANDS), f1 = 40 * Math.pow(400, (i + 1) / BANDS);
+        const b0 = Math.min(freqData.length - 1, Math.floor(f0 / binHz));
+        const b1 = Math.min(freqData.length, Math.max(b0 + 1, Math.ceil(f1 / binHz)));
+        let max = 0;
+        for (let b = b0; b < b1; b++) if (freqData[b] > max) max = freqData[b];
+        // Highs carry less energy; tilt them up so the whole ring moves.
+        v = Math.min(1, Math.pow(max / 255, 1.6) * (1 + 0.9 * i / BANDS));
+      }
+      if (!freqData) { levels[i] = peaks[i] = 0; continue; } // stopped: ring rests dark
+      // Fast attack, slow release.
+      levels[i] = v > levels[i] ? v : Math.max(v, levels[i] - 0.035);
+      if (levels[i] >= peaks[i]) { peaks[i] = levels[i]; hold[i] = 20; }
+      else if (hold[i] > 0) hold[i]--;
+      else peaks[i] = Math.max(0, peaks[i] - 0.012);
     }
 
-    // Compute heights from freq data or idle pattern
-    const heights = new Float32Array(NUM_BARS);
-    if (freqData) {
-      // Log-ish distribution over the lower 75% of bins
-      const maxBin = Math.floor(freqData.length * 0.75);
-      for (let i = 0; i < NUM_BARS; i++) {
-        const t0 = Math.pow(maxBin, i / NUM_BARS);
-        const t1 = Math.pow(maxBin, (i + 1) / NUM_BARS);
-        const b0 = Math.floor(t0);
-        const b1 = Math.max(b0 + 1, Math.floor(t1));
-        let sum = 0, count = 0;
-        for (let b = b0; b < Math.min(b1, freqData.length); b++) { sum += freqData[b]; count++; }
-        heights[i] = count > 0 ? (sum / count) / 255 : 0;
+    const color = t => t < 0.6 ? '#00e060' : t < 0.85 ? '#d8e000' : '#ff3c14';
+    ctx.save();
+    ctx.translate(cxs, cys);
+    for (let k = 0; k < bars; k++) {
+      const band = k < BANDS ? k : bars - 1 - k;
+      const lit = Math.round(levels[band] * SEGS);
+      const pk = Math.min(SEGS - 1, Math.round(peaks[band] * SEGS));
+      ctx.save();
+      ctx.rotate(-Math.PI / 2 + (k + 0.5) * barArc);
+      for (let sgm = 0; sgm < SEGS; sgm++) {
+        const t = sgm / SEGS;
+        const on = sgm < lit;
+        const isPeak = !on && sgm === pk && peaks[band] > 0.05;
+        ctx.globalAlpha = on ? 1 : isPeak ? 0.85 : 0.07;
+        ctx.fillStyle = isPeak ? '#ff3c14' : color(t);
+        ctx.fillRect(r0 + sgm * segLen, -barW / 2, segLen * 0.72, barW);
       }
-    } else {
-      for (let i = 0; i < NUM_BARS; i++) {
-        const t = i / NUM_BARS;
-        heights[i] = Math.max(0.03, Math.abs(
-          Math.sin(t * Math.PI * 3.7) * 0.22 +
-          Math.sin(t * Math.PI * 7.3 + 0.8) * 0.10 +
-          0.04
-        ));
-      }
+      ctx.restore();
     }
-
-    // Update peaks with hold-then-fall
-    for (let i = 0; i < NUM_BARS; i++) {
-      if (heights[i] >= this._eqPeaks[i]) {
-        this._eqPeaks[i]    = heights[i];
-        this._eqPeakHold[i] = 18; // hold for ~18 frames
-      } else if (this._eqPeakHold[i] > 0) {
-        this._eqPeakHold[i]--;
-      } else {
-        this._eqPeaks[i] = Math.max(0, this._eqPeaks[i] - FALL_RATE);
-      }
+    // Soft bloom under the lit ring.
+    const avg = levels.reduce((a, b) => a + b, 0) / BANDS;
+    if (avg > 0.02) {
+      const g = ctx.createRadialGradient(0, 0, r0, 0, 0, r0 + len);
+      g.addColorStop(0, `rgba(0,224,96,${(0.10 + avg * 0.25).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(0,224,96,0)');
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, r0 + len, 0, TAU); ctx.arc(0, 0, r0, 0, TAU, true); ctx.fill();
     }
-
-    // Draw bars
-    for (let i = 0; i < NUM_BARS; i++) {
-      const h      = heights[i];
-      const numSegs = Math.max(1, Math.round(h * NUM_SEGS));
-      const bx     = startX + i * barW + gap;
-
-      // Segments bottom-up
-      for (let s = 0; s < numSegs; s++) {
-        const sy = baseY - (s + 1) * segH + segGap / 2;
-        const t  = s / NUM_SEGS; // 0=bottom 1=top
-
-        // green → yellow → red
-        let r, g, b;
-        if (t < 0.5) { r = Math.round(t * 2 * 245); g = 200 + Math.round(t * 2 * 20); b = 0; }
-        else          { r = 255; g = Math.round((1 - (t - 0.5) * 2) * 175); b = 0; }
-
-        // Glow on top 2 segments
-        if (s >= numSegs - 2) {
-          ctx.shadowColor = `rgba(${r},${g},${b},0.9)`;
-          ctx.shadowBlur  = 7;
-        } else {
-          ctx.shadowBlur = 0;
-        }
-
-        ctx.fillStyle = `rgb(${r},${g},${b})`;
-        ctx.fillRect(bx, sy, netBarW, segH - segGap);
-      }
-      ctx.shadowBlur = 0;
-
-      // Peak indicator
-      const pk = this._eqPeaks[i];
-      if (pk > 0.04) {
-        const pkSeg = Math.min(NUM_SEGS - 1, Math.round(pk * NUM_SEGS));
-        const pkY   = baseY - (pkSeg + 1) * segH + segGap / 2;
-        ctx.fillStyle  = 'rgba(255, 55, 15, 0.95)';
-        ctx.shadowColor = 'rgba(255,70,0,1)';
-        ctx.shadowBlur  = 9;
-        ctx.fillRect(bx, pkY, netBarW, segH - segGap);
-        ctx.shadowBlur = 0;
-      }
-
-      // Reflection — 7 segments below baseline, fading
-      const reflSegs = Math.min(numSegs, 7);
-      for (let s = 0; s < reflSegs; s++) {
-        const sy    = baseY + s * segH + segGap / 2 + 4;
-        const alpha = (0.20 - s * 0.025) * Math.max(0.4, h);
-        if (alpha <= 0) break;
-        const t  = s / NUM_SEGS;
-        let r, g, b;
-        if (t < 0.5) { r = Math.round(t * 2 * 245); g = 200; b = 0; }
-        else          { r = 255; g = Math.round((1 - (t - 0.5) * 2) * 175); b = 0; }
-        ctx.fillStyle = `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
-        ctx.fillRect(bx, sy, netBarW, segH - segGap);
-      }
-    }
+    ctx.restore();
   }
 
   _drawAlienHeadBg(ctx, W, cxs, cys, Routs, scale) {

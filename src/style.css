@@ -2034,3 +2034,12 @@ body.has-mini-player { padding-bottom: 64px; }
 .mini-btn:disabled { opacity: 0.3; cursor: default; }
 .mini-play { border-color: #2A2A26; color: var(--accent); }
 @media (max-width: 520px) { #miniPrev { display: none; } .mini-player { gap: 8px; padding: 0 12px; } }
+
+/* ── Skin picker on the player deck ── */
+.skin-picker { display: inline-flex; gap: 4px; }
+.skin-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; background: none; border: 1px solid var(--hw-line); border-radius: 2px; color: var(--hw-dim); font-family: var(--hw-mono); font-size: 0.625rem; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; }
+.skin-chip:hover { color: var(--hw-text); }
+.skin-chip.active { color: var(--hw-text); border-color: var(--hw-line-soft); }
+.skin-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dot); opacity: 0.4; }
+.skin-chip.active .skin-chip-dot { opacity: 1; box-shadow: 0 0 6px var(--dot); }
+.hw-deck > .hw-specs { position: relative; text-align: center; margin: -4px 0 10px; color: var(--hw-dim); }

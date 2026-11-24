@@ -12,8 +12,6 @@ const STUDIO_HTML = `
   <div class="app">
     <div class="studio-skin-row app-header">
       <div class="skin-switcher">
-        <button class="skin-dot" id="skinClassic" title="Classic"  style="--dot:#4ecdc4"></button>
-        <button class="skin-dot" id="skinVagc77"  title="VAGC-77"  style="--dot:#00e5ff"></button>
         <button class="skin-dot" id="skinOmitron" title="OMITRON"  style="--dot:#39ff14"></button>
         <button class="skin-dot" id="skinOwl"     title="OWL"      style="--dot:#d4880a"></button>
         <button class="skin-dot" id="skinEq"      title="EQ"       style="--dot:#00e060"></button>
@@ -239,9 +237,6 @@ class App {
         document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
       });
     });
-
-    document.getElementById('skinClassic').addEventListener('click', () => this._applySkin(SKINS.classic));
-    document.getElementById('skinVagc77').addEventListener('click', () => this._applySkin(SKINS.vagc77));
     document.getElementById('skinOmitron').addEventListener('click', () => this._applySkin(SKINS.omitron));
     document.getElementById('skinOwl').addEventListener('click', () => this._applySkin(SKINS.owl));
     document.getElementById('skinEq').addEventListener('click', () => this._applySkin(SKINS.eq));
@@ -667,8 +662,6 @@ class App {
   }
 
   _updateSkinButtons(skin) {
-    document.getElementById('skinClassic').classList.toggle('active', skin === SKINS.classic);
-    document.getElementById('skinVagc77').classList.toggle('active', skin === SKINS.vagc77);
     document.getElementById('skinOmitron').classList.toggle('active', skin === SKINS.omitron);
     document.getElementById('skinOwl').classList.toggle('active', skin === SKINS.owl);
     document.getElementById('skinEq').classList.toggle('active', skin === SKINS.eq);

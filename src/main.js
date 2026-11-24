@@ -4,8 +4,12 @@ import { supabase } from './supabase.js';
 import { refreshBell } from './ui.js';
 import { setBrowseQueue } from './player.js';
 import { mountMiniPlayer } from './mini-player.js';
+import { SkinManager, SKINS } from './skin.js';
 
 mountMiniPlayer();
+
+// Apply the saved skin (or OWL) before any view renders.
+{ const mgr = new SkinManager(); if (!mgr.restore()) mgr.apply(SKINS.owl); }
 
 // Opening a record from a list makes that list the up-next queue.
 document.addEventListener('click', (e) => {

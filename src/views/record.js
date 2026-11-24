@@ -1,6 +1,7 @@
 import { supabase } from '../supabase.js';
 import { navigate } from '../router.js';
 import { TAU } from '../constants.js';
+import { skinSwitcherHtml, mountSkinSwitcher } from '../skin-switcher.js';
 import { player, getGroove, fetchRecord, queueFor, coverUrl, GEOM_DEFAULTS } from '../player.js';
 import { esc, rarityTier, cr, timeAgo, userLink, specialBadge, getFees, splitSale, confirmDialog, priceChart, formDialog } from '../ui.js';
 import { makeOfferDialog, acceptOfferDialog, eligibleCopies } from '../offers.js';
@@ -23,13 +24,14 @@ export async function recordView({ id }) {
           <img class="hw-glow" id="hwGlow" alt="" aria-hidden="true" hidden>
           <div class="hw-vignette" aria-hidden="true"></div>
           <div class="hw-gridlines" aria-hidden="true"></div>
-          <div class="hw-head"><span class="hw-label">A1 · PLAYBACK</span><span class="hw-label" id="hwSpecs"></span></div>
+          <div class="hw-head"><span class="hw-label">A1 · PLAYBACK</span>${skinSwitcherHtml()}</div>
           <div class="hw-disc">
             <div class="hw-disc-ring" aria-hidden="true"></div>
             <canvas id="recordCanvas" width="1000" height="1000"></canvas>
             <span class="hw-tick" aria-hidden="true"></span>
             <span class="hw-deg left" aria-hidden="true">270</span><span class="hw-deg right" aria-hidden="true">090</span>
           </div>
+          <div class="hw-specs hw-label" id="hwSpecs"></div>
           <div class="hw-transport">
             <div class="play-wrap" id="recordPlayWrap">
               <div class="play-ring"></div>
@@ -484,13 +486,9 @@ export async function recordView({ id }) {
     const neighbor = d => { const q = myQueue(); const i = q.indexOf(id); return i >= 0 ? q[i + d] ?? null : null; };
     const local = { rotation: 0, progress: 0, touched: false };
 
-    const skinMgr = new SkinManager();
-    const skin = skinMgr.restore() || SKINS.owl;
-    if (!skinMgr.restore()) skinMgr.apply(skin);
-
+    const skin = new SkinManager().restore() || SKINS.owl;
     const renderer = new Renderer(document.getElementById('recordCanvas'));
-    renderer.setSkin(skin.canvas);
-    renderer.preRenderGroove(result.groovePoints, geom);
+    renderer.setSkin(skin.canvas, result.groovePoints, geom);
 
     const timeEl = document.getElementById('recordCurrentTime');
     const progressEl = document.getElementById('hwProgress');
@@ -598,8 +596,9 @@ export async function recordView({ id }) {
     const discEl = canvasEl.parentElement;
     const angleAt = e => {
       const r = canvasEl.getBoundingClientRect();
-      const k = canvasEl.width / r.width, s = canvasEl.width / 520;
-      const x = (e.clientX - r.left) * k - geom.cx * s, y = (e.clientY - r.top) * k - geom.cy * s;
+      const k = canvasEl.width / r.width, s = (canvasEl.width / 520) * (renderer.skin.frameScale ?? 1);
+      const c = canvasEl.width / 520; // disc centre doesn't move with frameScale
+      const x = (e.clientX - r.left) * k - geom.cx * c, y = (e.clientY - r.top) * k - geom.cy * c;
       return { angle: Math.atan2(y, x), dist: Math.hypot(x, y), s };
     };
     let dragging = false, lastAngle = 0, lastMove = 0;
@@ -639,6 +638,11 @@ export async function recordView({ id }) {
     };
     discEl.addEventListener('pointerup', endDrag);
     discEl.addEventListener('pointercancel', endDrag);
+
+    mountSkinSwitcher(document.querySelector('.hw-deck .skin-picker'), next => {
+      renderer.setSkin(next.canvas, result.groovePoints, geom);
+      redraw();
+    });
 
     redraw();
     renderState();

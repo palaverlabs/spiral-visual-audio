@@ -1,44 +1,29 @@
-import { SkinManager, SKINS } from './skin.js';
+// Skin picker for the player deck. Switching restyles the whole app and redraws the disc.
+import { SkinManager, SKINS, PLAYER_SKINS } from './skin.js';
 
-const DOTS = [
-  { key: 'classic', title: 'Classic', dot: '#4ecdc4' },
-  { key: 'vagc77',  title: 'VAGC-77', dot: '#00e5ff' },
-  { key: 'omitron', title: 'OMITRON', dot: '#39ff14' },
-  { key: 'owl',     title: 'OWL',     dot: '#d4880a' },
-  { key: 'eq',      title: 'EQ',      dot: '#00e060' },
-];
+const DOT = { owl: '#d4880a', omitron: '#39ff14', eq: '#00e060' };
 
 export function skinSwitcherHtml() {
-  return `<div class="skin-switcher" id="pageSkinSwitcher">${
-    DOTS.map(d =>
-      `<button class="skin-dot" data-skin="${d.key}" title="${d.title}" style="--dot:${d.dot}"></button>`
-    ).join('')
+  return `<div class="skin-picker" role="radiogroup" aria-label="Player skin">${
+    PLAYER_SKINS.map(key => `<button class="skin-chip" role="radio" data-skin="${key}" style="--dot:${DOT[key]}"><span class="skin-chip-dot"></span>${SKINS[key].name}</button>`).join('')
   }</div>`;
 }
 
-export function mountSkinSwitcher() {
+// onChange(skin) runs after the skin is applied, so the caller can redraw its canvas.
+export function mountSkinSwitcher(container, onChange) {
   const mgr = new SkinManager();
-  const restored = mgr.restore();
-  const current = restored || SKINS.owl;
-  if (!restored) mgr.apply(current);
-
-  const container = document.getElementById('pageSkinSwitcher');
-  if (!container) return;
-
-  const update = (skin) => {
-    container.querySelectorAll('.skin-dot').forEach(btn => {
-      btn.classList.toggle('active', SKINS[btn.dataset.skin] === skin);
-    });
-  };
-
+  const current = mgr.restore() || SKINS.owl;
+  const update = skin => container.querySelectorAll('.skin-chip').forEach(btn => {
+    const on = SKINS[btn.dataset.skin] === skin;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-checked', on);
+  });
   update(current);
-
   container.addEventListener('click', e => {
-    const btn = e.target.closest('.skin-dot');
-    if (!btn) return;
-    const skin = SKINS[btn.dataset.skin];
+    const skin = SKINS[e.target.closest('.skin-chip')?.dataset.skin];
     if (!skin) return;
     mgr.apply(skin);
     update(skin);
+    onChange?.(skin);
   });
 }

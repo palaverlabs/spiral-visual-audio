@@ -78,8 +78,8 @@ export class PlaybackManager {
         this._node = new AudioWorkletNode(ctx, 'groove-processor');
       }
       this._analyser = ctx.createAnalyser();
-      this._analyser.fftSize = 256;
-      this._analyser.smoothingTimeConstant = 0.8;
+      this._analyser.fftSize = 1024;
+      this._analyser.smoothingTimeConstant = 0.7;
       this._freqData = new Uint8Array(this._analyser.frequencyBinCount);
       this._node.connect(this._analyser);
       this._analyser.connect(ctx.destination);

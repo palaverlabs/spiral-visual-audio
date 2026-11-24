@@ -279,6 +279,7 @@ const EQ_CSS = {
 
 const EQ_CANVAS = {
   theme: 'spectrum',
+  frameScale: 0.74,
   disc: {
     bg: ['#020e06', '#010904', '#010603'],
     rim: '#032812',
@@ -315,6 +316,9 @@ const EQ_CANVAS = {
   },
 };
 
+// Skins offered in the player. Classic and VAGC-77 stay defined (Classic is the base for custom skins).
+export const PLAYER_SKINS = ['owl', 'omitron', 'eq'];
+
 export const SKINS = {
   classic: {
     name: 'Classic',
@@ -341,7 +345,7 @@ export const SKINS = {
     canvas: OWL_CANVAS,
   },
   eq: {
-    name: 'SPECTRUM',
+    name: 'EQ',
     fontUrl: null,
     css: EQ_CSS,
     canvas: EQ_CANVAS,
@@ -384,8 +388,6 @@ export class SkinManager {
   restore() {
     const name = localStorage.getItem('vagc-skin-name');
     if (!name) return null;
-    if (name === 'classic') { this.apply(SKINS.classic);  return SKINS.classic;  }
-    if (name === 'vagc77')  { this.apply(SKINS.vagc77);   return SKINS.vagc77;   }
     if (name === 'omitron') { this.apply(SKINS.omitron);  return SKINS.omitron;  }
     if (name === 'owl')     { this.apply(SKINS.owl);      return SKINS.owl;      }
     if (name === 'eq')      { this.apply(SKINS.eq);       return SKINS.eq;       }
