@@ -2043,3 +2043,4 @@ body.has-mini-player { padding-bottom: 64px; }
 .skin-chip:hover .skin-chip-dot { opacity: 0.8; transform: scale(1.25); }
 .skin-chip.active .skin-chip-dot { opacity: 1; box-shadow: 0 0 6px var(--dot); }
 .hw-deck > .hw-specs { position: relative; text-align: center; margin: -4px 0 10px; color: var(--hw-dim); }
+.cover-upload-zone.dragover { border-color: var(--accent); background: var(--accent-subtle); }

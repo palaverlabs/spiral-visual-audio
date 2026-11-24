@@ -361,7 +361,7 @@ class App {
     this.scrubProgress = 0;
     this.discRotation = 0;
     this.renderer.preRenderGroove(this.groovePoints, this._geom());
-    this.renderer.drawDiscWithGroove(0, -1, this._geom());
+    this._replayCut(this.groovePoints);
     this.renderer.canvas.style.cursor = 'grab';
     this._enablePlayback();
     document.getElementById('dropOverlay')?.classList.add('hidden');
@@ -450,6 +450,29 @@ class App {
         }
       });
     });
+  }
+
+  // Replays the cut for a groove that already exists (loaded SVG or library record).
+  // Stops as soon as playback starts or another groove replaces it.
+  _replayCut(points, ms = 2500) {
+    const geom = this._geom();
+    cancelAnimationFrame(this._cutAnim);
+    this.renderer.beginCut();
+    const total = points.length / 2, t0 = performance.now();
+    let drawn = 0;
+    const frame = () => {
+      if (this.groovePoints !== points || this.playback.isPlaying) { this.renderer.endCut(); return; }
+      const target = Math.min(total, Math.ceil(total * (performance.now() - t0) / ms));
+      if (target > drawn) { this.renderer.cutPoints(points.subarray(drawn * 2, target * 2), geom); drawn = target; }
+      if (drawn >= total) {
+        this.renderer.endCut();
+        this.renderer.drawDiscWithGroove(this.discRotation, -1, geom);
+        return;
+      }
+      this.renderer.drawCut(geom);
+      this._cutAnim = requestAnimationFrame(frame);
+    };
+    this._cutAnim = requestAnimationFrame(frame);
   }
 
   // Encodes in a worker and draws the groove being cut as the points stream back.

@@ -45,17 +45,47 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
   const coverInput = document.getElementById('coverInput');
   const coverPreview = document.getElementById('coverPreview');
   const coverPlaceholder = document.getElementById('coverPlaceholder');
-  let coverFile = null;
+  let coverBlob = null;
+  const coverStatus = (msg, type = 'error') => {
+    const el = document.getElementById('publishStatus');
+    el.textContent = msg;
+    el.className = `status-line ${type}`;
+  };
 
-  zone.addEventListener('click', () => coverInput.click());
-  coverInput.addEventListener('change', () => {
-    const file = coverInput.files[0];
+  // Decode and resize right away, so a bad image is caught at pick time, not at publish.
+  const useCover = async file => {
     if (!file) return;
-    coverFile = file;
-    const url = URL.createObjectURL(file);
-    coverPreview.src = url;
+    if (file.type && !file.type.startsWith('image/')) { coverStatus('Cover must be an image (JPG, PNG or WebP).'); return; }
+    coverStatus('Reading image...', 'info');
+    try {
+      coverBlob = await resizeImage(file, 600);
+    } catch {
+      coverBlob = null;
+      coverPreview.hidden = true;
+      coverPlaceholder.hidden = false;
+      coverStatus(/hei[cf]/i.test(file.type + file.name)
+        ? "This browser can't read HEIC photos. Export it as JPG or PNG and try again."
+        : "Couldn't read that image. Try a JPG, PNG or WebP.");
+      return;
+    }
+    coverPreview.src = URL.createObjectURL(coverBlob);
     coverPreview.hidden = false;
     coverPlaceholder.hidden = true;
+    coverStatus('Cover art ready.', 'success');
+  };
+
+  zone.addEventListener('click', e => {
+    if (e.target === coverInput) return;
+    coverInput.value = ''; // so picking the same file again still fires change
+    coverInput.click();
+  });
+  coverInput.addEventListener('change', () => useCover(coverInput.files[0]));
+  zone.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation();
+    zone.classList.remove('dragover');
+    useCover(e.dataTransfer.files[0]);
   });
 
   document.getElementById('publishToggle').addEventListener('click', () => {
@@ -117,14 +147,17 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
         .upload(filePath, blob, { contentType: 'application/octet-stream', cacheControl: '31536000' });
       if (uploadError) throw uploadError;
 
-      // Custom cover art — resize to 600x600 max before upload
+      // Custom cover art (already resized to 600px when picked). If it fails, say so; don't publish without it.
       let coverPath = null;
-      if (coverFile) {
-        try {
-          const resized = await resizeImage(coverFile, 600);
-          coverPath = `${user.id}/${recordId}_cover.jpg`;
-          await supabase.storage.from('records').upload(coverPath, resized, { contentType: 'image/jpeg', cacheControl: '31536000' });
-        } catch (_) { coverPath = null; }
+      if (coverBlob) {
+        setStatus('Uploading cover art...');
+        coverPath = `${user.id}/${recordId}_cover.jpg`;
+        const { error: coverError } = await supabase.storage.from('records')
+          .upload(coverPath, coverBlob, { contentType: 'image/jpeg', cacheControl: '31536000' });
+        if (coverError) {
+          await supabase.storage.from('records').remove([filePath]).catch(() => {});
+          throw new Error(`Cover art upload failed: ${coverError.message}`);
+        }
       }
 
       // Auto-generated thumbnail (fallback if no custom cover)
