@@ -1,6 +1,11 @@
 import { TAU } from './constants.js';
 import { SKINS } from './skin.js';
 
+const hexToRgb = (hex) => {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex).trim());
+  return m ? `${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)}` : '255,255,255';
+};
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
@@ -14,6 +19,7 @@ export class Renderer {
 
   setSkin(canvasSkin, groovePoints = null, geom = {}) {
     this.skin = canvasSkin;
+    this._layerVersion = (this._layerVersion || 0) + 1;
     if (groovePoints) {
       this._groovePoints = groovePoints;
       this._grooveGeom = geom;
@@ -124,6 +130,22 @@ export class Renderer {
     ctx.shadowBlur = 0;
 
     this.grooveImage = offscreen;
+    this._layerVersion = (this._layerVersion || 0) + 1;
+  }
+
+  // Static artwork (disc body + groove + label, sheens, alien frame) is drawn once into
+  // offscreen layers; each frame only composites them. Rebuilt when skin, groove or size changes.
+  _layer(name, key, W, draw) {
+    this._layers ??= {};
+    const fullKey = `${this._layerVersion || 0}|${W}|${key}`;
+    const hit = this._layers[name];
+    if (hit && hit.key === fullKey) return hit.canvas;
+    const canvas = hit?.canvas ?? document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = W;
+    draw(canvas.getContext('2d'));
+    this._layers[name] = { key: fullKey, canvas };
+    return canvas;
   }
 
   drawDiscWithGroove(rotation, stylusProgress, { Rout = 220, Rin = 40, cx = 260, cy = 260 } = {}, amplitude = 0, freqData = null) {
@@ -143,102 +165,90 @@ export class Renderer {
     const Rins = Math.max(12, Rin - 8) * scale;
     const labelR = 45 * scale;
 
-    ctx.clearRect(0, 0, W, W);
-    if (this.skin.frame === 'alien') this._drawAlienHeadBg(ctx, W, cxs, cys, Routs, scale);
+    const geomKey = `${Rout},${Rin},${cx},${cy}`;
+    const alien = this.skin.frame === 'alien';
 
-    // --- Rotating disc body + groove ---
+    ctx.clearRect(0, 0, W, W);
+    if (alien) ctx.drawImage(this._layer('alienBg', geomKey, W, c => this._drawAlienHeadBg(c, W, cxs, cys, Routs, scale)), 0, 0);
+
+    // --- Rotating disc: body, groove, surface sheen and label, pre-composited once ---
+    const disc = this._layer('disc', geomKey, W, c => {
+      this._drawDiscBody(c, W, scale, cxs, cys, Routs, Rins);
+      if (this.grooveImage) c.drawImage(this.grooveImage, 0, 0);
+      const sheenX = cxs + Routs * 0.28;
+      const sheenY = cys - Routs * 0.42;
+      const sheenGrad = c.createRadialGradient(sheenX, sheenY, 0, sheenX, sheenY, Routs * 0.75);
+      sheenGrad.addColorStop(0, 'rgba(255,255,255,0.055)');
+      sheenGrad.addColorStop(0.45, 'rgba(255,255,255,0.018)');
+      sheenGrad.addColorStop(1, 'rgba(255,255,255,0)');
+      c.save();
+      c.beginPath();
+      c.arc(cxs, cys, Routs - scale, 0, TAU);
+      c.clip();
+      c.fillStyle = sheenGrad;
+      c.fillRect(cxs - Routs, cys - Routs, Routs * 2, Routs * 2);
+      c.restore();
+      this._drawLabel(c, scale, cxs, cys, labelR, true);
+    });
     ctx.save();
     ctx.translate(cxs, cys);
     ctx.rotate(rotation);
     ctx.translate(-cxs, -cys);
-
-    this._drawDiscBody(ctx, W, scale, cxs, cys, Routs, Rins);
-    if (this.grooveImage) ctx.drawImage(this.grooveImage, 0, 0);
-
-    // Rotating sheen: a soft radial highlight fixed to the disc surface.
-    const sheenX = cxs + Routs * 0.28;
-    const sheenY = cys - Routs * 0.42;
-    const sheenGrad = ctx.createRadialGradient(sheenX, sheenY, 0, sheenX, sheenY, Routs * 0.75);
-    sheenGrad.addColorStop(0, 'rgba(255,255,255,0.055)');
-    sheenGrad.addColorStop(0.45, 'rgba(255,255,255,0.018)');
-    sheenGrad.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cxs, cys, Routs - scale, 0, TAU);
-    ctx.clip();
-    ctx.fillStyle = sheenGrad;
-    ctx.fillRect(cxs - Routs, cys - Routs, Routs * 2, Routs * 2);
+    ctx.drawImage(disc, 0, 0);
     ctx.restore();
 
-    this._drawLabel(ctx, scale, cxs, cys, labelR, true);
+    const playing = stylusProgress >= 0 && stylusProgress <= 1;
+    const r = playing ? (Rout - stylusProgress * (Rout - Rin)) * scale : 0;
 
-    ctx.restore(); // end rotation
-
-    // --- Active groove ring (fixed, underneath stylus) ---
-    if (stylusProgress >= 0 && stylusProgress <= 1) {
-      const t = stylusProgress;
-      const grooveR = (Rout - t * (Rout - Rin)) * scale;
+    // --- Active groove ring: layered strokes stand in for shadowBlur (far cheaper per frame) ---
+    if (playing) {
       const ar = this.skin.activeRing;
-
       ctx.save();
-      ctx.shadowColor = ar.glow;
-      ctx.shadowBlur = 18 * scale;
-      ctx.beginPath();
-      ctx.arc(cxs, cys, grooveR, 0, TAU);
-      ctx.strokeStyle = ar.outer;
-      ctx.lineWidth = 2.5 * scale;
-      ctx.stroke();
-      ctx.shadowBlur = 8 * scale;
-      ctx.beginPath();
-      ctx.arc(cxs, cys, grooveR, 0, TAU);
-      ctx.strokeStyle = ar.inner;
-      ctx.lineWidth = 1.0 * scale;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
+      ctx.strokeStyle = ar.glow;
+      ctx.globalAlpha = 0.05; ctx.lineWidth = 14 * scale;
+      ctx.beginPath(); ctx.arc(cxs, cys, r, 0, TAU); ctx.stroke();
+      ctx.globalAlpha = 0.1; ctx.lineWidth = 6 * scale;
+      ctx.beginPath(); ctx.arc(cxs, cys, r, 0, TAU); ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = ar.outer; ctx.lineWidth = 2.5 * scale;
+      ctx.beginPath(); ctx.arc(cxs, cys, r, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = ar.inner; ctx.lineWidth = 1.0 * scale;
+      ctx.beginPath(); ctx.arc(cxs, cys, r, 0, TAU); ctx.stroke();
       ctx.restore();
     }
 
     // --- Fixed outer sheen (viewer's perspective) ---
-    this._drawSheen(ctx, W, cxs, cys, Routs, scale);
+    ctx.drawImage(this._layer('sheen', geomKey, W, c => this._drawSheen(c, W, cxs, cys, Routs, scale)), 0, 0);
 
-    // --- Stylus ---
-    if (stylusProgress >= 0 && stylusProgress <= 1) {
-      const t = stylusProgress;
+    // --- Stylus: radial-gradient glows instead of shadowBlur ---
+    if (playing) {
       const fixedAngle = -Math.PI * 0.25;
-      const r = (Rout - t * (Rout - Rin)) * scale;
       const sx = cxs + r * Math.cos(fixedAngle);
       const sy = cys + r * Math.sin(fixedAngle);
       const s = this.skin.stylus;
-
-      // pulse: 1.0 at silence, up to ~4.0 on loud transients.
-      const pulse = 1 + amplitude * 3.0;
+      const pulse = 1 + amplitude * 3.0;   // 1.0 at silence, up to ~4.0 on loud transients
+      const [br, bgc, bb] = s.bloomFill;
+      // Approximates a filled dot with shadowBlur: solid to the dot's edge, then a soft falloff over ~blur px.
+      const glow = (coreR, blur, rgb, alpha) => {
+        const outer = coreR + blur * 0.75;
+        const k = coreR / outer;
+        const gr = ctx.createRadialGradient(sx, sy, 0, sx, sy, outer);
+        gr.addColorStop(0, `rgba(${rgb},${Math.min(1, alpha)})`);
+        gr.addColorStop(k, `rgba(${rgb},${Math.min(1, alpha * 0.9)})`);
+        gr.addColorStop(k + (1 - k) * 0.3, `rgba(${rgb},${alpha * 0.4})`);
+        gr.addColorStop(k + (1 - k) * 0.65, `rgba(${rgb},${alpha * 0.12})`);
+        gr.addColorStop(1, `rgba(${rgb},0)`);
+        ctx.fillStyle = gr;
+        ctx.beginPath(); ctx.arc(sx, sy, outer, 0, TAU); ctx.fill();
+      };
       ctx.save();
-
-      // Outer bloom — grows on hits.
-      ctx.shadowColor = s.bloom;
-      ctx.shadowBlur = (28 + amplitude * 45) * scale;
-      ctx.beginPath();
-      ctx.arc(sx, sy, 6 * pulse * scale, 0, TAU);
-      ctx.fillStyle = `rgba(${s.bloomFill[0]},${s.bloomFill[1]},${s.bloomFill[2]},${0.25 + amplitude * 0.20})`;
-      ctx.fill();
-
-      // Mid glow.
-      ctx.shadowBlur = (16 + amplitude * 28) * scale;
-      ctx.beginPath();
-      ctx.arc(sx, sy, 4 * pulse * scale, 0, TAU);
-      ctx.fillStyle = `rgba(${s.bloomFill[0]},${s.midG + (amplitude * 60 | 0)},${s.bloomFill[2]},${0.6 + amplitude * 0.25})`;
-      ctx.fill();
-
-      // Core dot — tight, bright.
-      ctx.shadowColor = s.coreGlow;
-      ctx.shadowBlur = (7 + amplitude * 14) * scale;
+      glow(6 * pulse * scale, (28 + amplitude * 45) * scale, `${br},${bgc},${bb}`, 0.55 + amplitude * 0.3);
+      glow(4 * pulse * scale, (16 + amplitude * 28) * scale, `${br},${s.midG + (amplitude * 60 | 0)},${bb}`, 0.8 + amplitude * 0.2);
+      glow(2.5 * Math.max(1, pulse * 0.7) * scale, (7 + amplitude * 14) * scale, hexToRgb(s.coreGlow), 0.95);
       ctx.beginPath();
       ctx.arc(sx, sy, 2.5 * Math.max(1, pulse * 0.7) * scale, 0, TAU);
       ctx.fillStyle = s.core;
       ctx.fill();
-
-      // White hot center.
-      ctx.shadowBlur = 0;
       ctx.beginPath();
       ctx.arc(sx, sy, 1.2 * scale, 0, TAU);
       ctx.fillStyle = '#fff';
@@ -247,11 +257,11 @@ export class Renderer {
       // Beam — lengthens and widens on transients.
       const beamLen = (24 + amplitude * 26) * scale;
       const beamW   = (2.2 + amplitude * 2.8) * scale;
-      const [br, bg, bb] = s.beamRGB;
+      const [bR, bG, bB] = s.beamRGB;
       const beamGrad = ctx.createLinearGradient(sx, sy, sx, sy - beamLen);
-      beamGrad.addColorStop(0,   `rgba(${br},${bg},${bb},${0.5 + amplitude * 0.4})`);
-      beamGrad.addColorStop(0.3, `rgba(${br},${bg},${bb},${0.1 + amplitude * 0.2})`);
-      beamGrad.addColorStop(1,   `rgba(${br},${bg},${bb},0)`);
+      beamGrad.addColorStop(0,   `rgba(${bR},${bG},${bB},${0.5 + amplitude * 0.4})`);
+      beamGrad.addColorStop(0.3, `rgba(${bR},${bG},${bB},${0.1 + amplitude * 0.2})`);
+      beamGrad.addColorStop(1,   `rgba(${bR},${bG},${bB},0)`);
       ctx.fillStyle = beamGrad;
       ctx.beginPath();
       ctx.moveTo(sx - beamW, sy);
@@ -260,11 +270,10 @@ export class Renderer {
       ctx.lineTo(sx + beamW, sy);
       ctx.closePath();
       ctx.fill();
-
       ctx.restore();
     }
 
-    if (this.skin.frame === 'alien') this._drawAlienVisor(ctx, W, cxs, cys, Routs, scale);
+    if (alien) ctx.drawImage(this._layer('alienVisor', geomKey, W, c => this._drawAlienVisor(c, W, cxs, cys, Routs, scale)), 0, 0);
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────

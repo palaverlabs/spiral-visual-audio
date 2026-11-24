@@ -1997,3 +1997,8 @@ div.record-card-vinyl { border: 1px solid var(--hw-line); box-sizing: border-box
 .release-price .muted { font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--hw-dim); }
 .play-btn { border-radius: 4px; }
 .play-ring { border-radius: 6px; }
+/* Smooth playback: progress animates via transform, glow sits on its own layer, no spinning ring. */
+.hw-progress span { width: 100%; transform: scaleX(0); transform-origin: left center; will-change: transform; }
+.hw-glow { will-change: transform; transform: translateZ(0); }
+.hw-disc canvas { will-change: transform; }
+.play-ring { display: none; }

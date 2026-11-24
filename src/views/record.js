@@ -554,6 +554,9 @@ export async function recordView({ id }) {
     renderer.drawDiscWithGroove(0, -1, geom);
 
     let discRotation = 0, scrubProgress = 0, spinRate = 0, isStopping = false;
+    let lastTimeText = '';
+    const timeEl = document.getElementById('recordCurrentTime');
+    const progressEl = document.getElementById('hwProgress');
     let lastFrameTime = performance.now();
 
     const playback = new PlaybackManager({
@@ -576,9 +579,8 @@ export async function recordView({ id }) {
           cancelBtn.style.display = 'none';
         });
       },
-      onFrame: ({ progress, audioTimePosition, amplitude = 0 }) => {
-        const now = performance.now();
-        const dt = Math.min((now - lastFrameTime) / 1000, 0.05);
+      onFrame: ({ progress, audioTimePosition, amplitude = 0, now = performance.now() }) => {
+        const dt = Math.max(0, Math.min((now - lastFrameTime) / 1000, 0.05));
         lastFrameTime = now;
 
         if (isStopping) {
@@ -594,10 +596,11 @@ export async function recordView({ id }) {
 
         scrubProgress = progress;
         renderer.drawDiscWithGroove(discRotation, scrubProgress, geom, amplitude, playback.getFrequencyData());
-        const el = document.getElementById('recordCurrentTime');
-        if (el) el.textContent = fmt(audioTimePosition);
-        const bar = document.getElementById('hwProgress');
-        if (bar) bar.style.width = `${(Math.max(0, Math.min(1, progress)) * 100).toFixed(2)}%`;
+        // Touch the DOM only when something visible changed: text once a second,
+        // progress via transform (compositor-only, no layout).
+        const t = fmt(audioTimePosition);
+        if (t !== lastTimeText) { lastTimeText = t; if (timeEl) timeEl.textContent = t; }
+        if (progressEl) progressEl.style.transform = `scaleX(${Math.max(0, Math.min(1, progress)).toFixed(4)})`;
       },
       onStop: () => {
         const btn = document.getElementById('recordPlayBtn');

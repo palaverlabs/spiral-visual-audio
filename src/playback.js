@@ -126,7 +126,8 @@ export class PlaybackManager {
 
   // rate = 1.0 → normal speed  rate = 0 → freeze  rate = -1 → backward scratch
   setRate(rate) {
-    if (!this._node) return;
+    if (!this._node || rate === this._lastRate) return;
+    this._lastRate = rate;
     this._node.port.postMessage({ type: 'adv', adv: this._baseAdv * rate });
   }
 
@@ -229,9 +230,11 @@ export class PlaybackManager {
   }
 
   _animate() {
-    const frame = () => {
+    this._lastRate = undefined;
+    const frame = (now) => {
       if (!this.isPlaying) return;
       this.onFrame({
+        now,
         progress: this._latestProgress,
         audioTimePosition: this._latestProgress * this._totalDuration,
         amplitude: this._amplitude,
