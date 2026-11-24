@@ -27,7 +27,10 @@ export class PlaybackManager {
     if (!this._ctx) {
       this._ctx = new (window.AudioContext || window.webkitAudioContext)();
     }
-    if (this._ctx.state === 'suspended') {
+    // iOS: play through the silent switch, like a music app.
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+    // iOS reports 'interrupted' after a call, lock screen or another app's audio.
+    if (this._ctx.state !== 'running') {
       this._ctx.resume(); // intentionally not awaited
     }
   }
@@ -62,7 +65,7 @@ export class PlaybackManager {
       }
 
       // Ensure context is running (belt-and-suspenders for non-iOS).
-      if (ctx.state === 'suspended') await ctx.resume();
+      if (ctx.state !== 'running') await ctx.resume();
 
       this._totalDuration = left.length / rate;
       this._baseAdv = rate / ctx.sampleRate;
@@ -165,7 +168,7 @@ export class PlaybackManager {
   }
 
   resumeIfSuspended() {
-    if (this._ctx && this._ctx.state === 'suspended') this._ctx.resume();
+    if (this._ctx && this._ctx.state !== 'running' && this._ctx.state !== 'closed') this._ctx.resume();
   }
 
   get latestProgress() { return this._latestProgress; }
