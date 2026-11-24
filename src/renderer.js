@@ -93,27 +93,42 @@ export class Renderer {
     ctx.drawImage(this._cut, 0, 0);
     this._drawLabel(ctx, scale, cxs, cys, labelR, true);
     ctx.drawImage(this._layer('sheen', key, W, c => this._drawSheen(c, W, cxs, cys, Routs, scale)), 0, 0);
-    if (this._cutHead) {
-      const [hx, hy] = this._cutHead;
-      const [r, g, bl] = this.skin.stylus.bloomFill;
-      const ang = Math.atan2(hy - cys, hx - cxs);
-      const armR = Routs + 40 * scale;
-      ctx.save();
-      // Cutter arm reaching in from beyond the rim
-      ctx.strokeStyle = `rgba(${r},${g},${bl},0.4)`; ctx.lineWidth = 1.5 * scale;
-      ctx.beginPath(); ctx.moveTo(cxs + Math.cos(ang) * armR, cys + Math.sin(ang) * armR); ctx.lineTo(hx, hy); ctx.stroke();
-      const gr = ctx.createRadialGradient(hx, hy, 0, hx, hy, 28 * scale);
-      gr.addColorStop(0, `rgba(${r},${g},${bl},0.95)`);
-      gr.addColorStop(0.2, `rgba(${r},${g},${bl},0.4)`);
-      gr.addColorStop(1, `rgba(${r},${g},${bl},0)`);
-      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(hx, hy, 28 * scale, 0, TAU); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(hx, hy, 2.2 * scale, 0, TAU); ctx.fill();
-      ctx.restore();
-    }
+    if (this._cutHead) this._drawCutHead(ctx, cxs, cys, Routs, scale);
     if (this.skin.frame === 'alien') ctx.drawImage(this._layer('alienVisor', key, W, c => this._drawAlienVisor(c, W, cxs, cys, Routs, scale)), 0, 0);
   }
 
   endCut() { this._cut = null; this._cutHead = null; }
+
+  // Disc artwork while a cut is in progress: body, the groove so far, label. Rebuilt each frame.
+  _cutDisc(W, scale, cxs, cys, Routs, Rins, labelR, key) {
+    const c = (this._cutFrame ??= document.createElement('canvas'));
+    if (c.width !== W) { c.width = W; c.height = W; }
+    const x = c.getContext('2d');
+    x.clearRect(0, 0, W, W);
+    x.drawImage(this._layer('cutBody', key, W, b => this._drawDiscBody(b, W, scale, cxs, cys, Routs, Rins)), 0, 0);
+    x.drawImage(this._cut, 0, 0);
+    x.drawImage(this._layer('cutLabel', key, W, b => this._drawLabel(b, scale, cxs, cys, labelR, true)), 0, 0);
+    return c;
+  }
+
+  // Glowing cutter at the end of the groove so far, with its arm reaching in from past the rim.
+  // Drawn in disc coordinates, so callers can rotate it with the disc.
+  _drawCutHead(ctx, cxs, cys, Routs, scale) {
+    const [hx, hy] = this._cutHead;
+    const [r, g, bl] = this.skin.stylus.bloomFill;
+    const ang = Math.atan2(hy - cys, hx - cxs);
+    const armR = Routs + 40 * scale;
+    ctx.save();
+    ctx.strokeStyle = `rgba(${r},${g},${bl},0.4)`; ctx.lineWidth = 1.5 * scale;
+    ctx.beginPath(); ctx.moveTo(cxs + Math.cos(ang) * armR, cys + Math.sin(ang) * armR); ctx.lineTo(hx, hy); ctx.stroke();
+    const gr = ctx.createRadialGradient(hx, hy, 0, hx, hy, 28 * scale);
+    gr.addColorStop(0, `rgba(${r},${g},${bl},0.95)`);
+    gr.addColorStop(0.2, `rgba(${r},${g},${bl},0.4)`);
+    gr.addColorStop(1, `rgba(${r},${g},${bl},0)`);
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(hx, hy, 28 * scale, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(hx, hy, 2.2 * scale, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
 
   preRenderGroove(groovePoints, { cx = 260, cy = 260 } = {}) {
     const { canvas } = this;
@@ -231,7 +246,7 @@ export class Renderer {
     if (alien) ctx.drawImage(this._layer('alienBg', geomKey, W, c => this._drawAlienHeadBg(c, W, cxs, cys, Routs, scale)), 0, 0);
 
     // --- Rotating disc: body, groove, surface sheen and label, pre-composited once ---
-    const disc = this._layer('disc', geomKey, W, c => {
+    const disc = this._cut ? this._cutDisc(W, scale, cxs, cys, Routs, Rins, labelR, geomKey) : this._layer('disc', geomKey, W, c => {
       this._drawDiscBody(c, W, scale, cxs, cys, Routs, Rins);
       if (this.grooveImage) c.drawImage(this.grooveImage, 0, 0);
       const sheenX = cxs + Routs * 0.28;
@@ -266,6 +281,7 @@ export class Renderer {
     ctx.rotate(rotation);
     ctx.translate(-cxs, -cys);
     ctx.drawImage(disc, 0, 0);
+    if (this._cutHead) this._drawCutHead(ctx, cxs, cys, Routs, scale);
     ctx.restore();
 
     const playing = stylusProgress >= 0 && stylusProgress <= 1;

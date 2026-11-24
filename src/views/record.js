@@ -140,6 +140,9 @@ export async function recordView({ id }) {
     });
   }
 
+  // Set by the deck once the groove is loaded: plays the cutting animation for a fresh mint.
+  let onMinted = () => {};
+
   // Edition + marketplace UI (price strip, actions, your copies, history, listings, supporters, activity)
   if (record.edition_size) {
     const marketEl = document.querySelector('.record-page');
@@ -401,7 +404,7 @@ export async function recordView({ id }) {
         if (!ok) return;
         e.target.disabled = true;
         const { error } = await supabase.rpc('purchase_edition', { p_record_id: id });
-        if (error) fail(error); else setStatus('Collected!', 'success');
+        if (error) fail(error); else { setStatus('Collected!', 'success'); onMinted(minted + 1); }
         await refresh();
       });
 
@@ -641,11 +644,32 @@ export async function recordView({ id }) {
       redraw();
     });
 
+    // Mint: cut a fresh copy on the deck. If it's playing, the record keeps spinning while the groove is laid down.
+    let mintAnim = 0;
+    onMinted = edition => {
+      const pts = result.groovePoints, total = pts.length / 2, ms = 3500, t0 = performance.now();
+      const specs = document.getElementById('hwSpecs'), specsText = specs.textContent;
+      cancelAnimationFrame(mintAnim);
+      renderer.beginCut();
+      let drawn = 0;
+      const step = () => {
+        const target = Math.min(total, Math.ceil(total * (performance.now() - t0) / ms));
+        if (target > drawn) { renderer.cutPoints(pts.subarray(drawn * 2, target * 2), geom); drawn = target; }
+        specs.textContent = `CUTTING ED. #${String(edition).padStart(2, '0')} · ${Math.floor((drawn / total) * 100)}%`;
+        const live = isMine() && player.pm.isPlaying; // while playing, the player's frames redraw the deck
+        if (drawn >= total) { renderer.endCut(); specs.textContent = specsText; if (!live) redraw(); return; }
+        if (!live) redraw();
+        mintAnim = requestAnimationFrame(step);
+      };
+      mintAnim = requestAnimationFrame(step);
+    };
+    if (import.meta.env.DEV) window.__spiralMint = onMinted; // lets local tests trigger the animation
+
     redraw();
     renderState();
 
     // Audio keeps playing after you leave; the mini player takes over.
-    return () => { offFrame(); offState(); };
+    return () => { offFrame(); offState(); cancelAnimationFrame(mintAnim); renderer.endCut(); };
   } catch (err) {
     setStatus(`Failed to load: ${err.message}`, 'error');
   }
