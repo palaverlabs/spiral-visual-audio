@@ -10,6 +10,12 @@ export async function navigate(path) {
   await _render(path);
 }
 
+// Swap the current URL without adding a history entry (for redirect routes).
+export async function redirect(path) {
+  history.replaceState(null, '', path);
+  await _render(path);
+}
+
 async function _render(path) {
   if (currentCleanup) { currentCleanup(); currentCleanup = null; }
 

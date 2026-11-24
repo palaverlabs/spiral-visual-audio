@@ -1,5 +1,5 @@
 import './style.css';
-import { route, navigate, start } from './router.js';
+import { route, navigate, redirect, start } from './router.js';
 import { supabase } from './supabase.js';
 import { refreshBell } from './ui.js';
 
@@ -73,11 +73,15 @@ route('/market', async () => {
   updateNav();
 });
 
-route('/library', async () => {
-  const { libraryView } = await import('./views/library.js');
-  await libraryView();
-  updateNav();
-});
+// /me = your own profile (collection, releases, balance all live there). /library kept as an alias for old links.
+const myProfile = async () => {
+  const user = supabase && (await supabase.auth.getUser()).data?.user;
+  if (!user) return redirect('/auth');
+  const { data } = await supabase.from('users').select('username').eq('id', user.id).single();
+  return redirect(data?.username ? `/u/${encodeURIComponent(data.username)}` : '/');
+};
+route('/me', myProfile);
+route('/library', myProfile);
 
 route('/auth', async () => {
   const { authView } = await import('./views/auth.js');
