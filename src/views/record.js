@@ -1,25 +1,23 @@
 import { supabase } from '../supabase.js';
 import { navigate } from '../router.js';
-import { unpackGroove } from '../groovepack.js';
+import { loadGroove, fetchGrooveBytes } from '../groove-loader.js';
+import { DEFAULT_ROUT, DEFAULT_RIN, DEFAULT_CX, DEFAULT_CY, SPIN_SPEED } from '../constants.js';
 import { esc, rarityTier, cr, timeAgo, userLink, specialBadge, getFees, splitSale, confirmDialog, priceChart, formDialog } from '../ui.js';
 import { makeOfferDialog, acceptOfferDialog, eligibleCopies } from '../offers.js';
 
-// Prefetch cache: id → Promise<string|null>
-const svgCache = new Map();
+// Prefetch cache of raw groove bytes: id → Promise<ArrayBuffer|null>. Decoding happens when the record opens.
+const bytesCache = new Map();
+const GEOM_DEFAULTS = { Rout: DEFAULT_ROUT, Rin: DEFAULT_RIN, cx: DEFAULT_CX, cy: DEFAULT_CY };
 
-async function fetchSvgText(url) {
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return unpackGroove(await resp.arrayBuffer());
+function grooveUrl(record) {
+  return record?.file_path ? supabase.storage.from('records').getPublicUrl(record.file_path).data?.publicUrl : null;
 }
 
-function prefetchSvg(record) {
-  if (!record?.file_path || svgCache.has(record.id)) return;
-  if (svgCache.size >= 3) svgCache.delete(svgCache.keys().next().value);
-  const { data: urlData } = supabase.storage.from('records').getPublicUrl(record.file_path);
-  const url = urlData?.publicUrl;
-  if (!url) return;
-  svgCache.set(record.id, fetchSvgText(url).catch(() => { svgCache.delete(record.id); return null; }));
+function prefetchGroove(record) {
+  const url = grooveUrl(record);
+  if (!url || bytesCache.has(record.id)) return;
+  if (bytesCache.size >= 2) bytesCache.delete(bytesCache.keys().next().value);
+  bytesCache.set(record.id, fetchGrooveBytes(url).catch(() => { bytesCache.delete(record.id); return null; }));
 }
 
 const SVG_PLAY = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>`;
@@ -77,6 +75,16 @@ export async function recordView({ id }) {
 
   if (error || !record) { setStatus('Record not found.', 'error'); return; }
 
+  // Start the groove download + decode (in a worker) and the player modules right away,
+  // in parallel with everything else the page loads.
+  const svgUrl = grooveUrl(record);
+  const groovePromise = !svgUrl ? Promise.reject(new Error('Could not resolve file URL.'))
+    : bytesCache.has(id)
+      ? bytesCache.get(id).then(buf => loadGroove(buf ? { buf } : { url: svgUrl }, GEOM_DEFAULTS))
+      : loadGroove({ url: svgUrl }, GEOM_DEFAULTS);
+  groovePromise.catch(() => {});
+  const playerModules = Promise.all([import('../renderer.js'), import('../playback.js'), import('../skin.js')]);
+
   const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
   // Cover art
@@ -122,7 +130,7 @@ export async function recordView({ id }) {
       }
     }
   }
-  if (nextRecord) prefetchSvg(nextRecord);
+  if (nextRecord) prefetchGroove(nextRecord);
   if (user && user.id === record.user_id) {
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'action-btn record-delete-btn';
@@ -474,36 +482,16 @@ export async function recordView({ id }) {
       filterEl?.addEventListener('change', () => { ui.filter = filterEl.value.trim(); draw(); });
     };
 
-    await refresh();
+    // Market data renders when it arrives; it no longer holds up the groove.
+    refresh().catch(err => console.error('Market load failed:', err));
   }
 
-  const { data: urlData } = supabase.storage.from('records').getPublicUrl(record.file_path);
-  const svgUrl = urlData?.publicUrl;
-  if (!svgUrl) { setStatus('Could not resolve file URL.', 'error'); return; }
-
-  setStatus('Fetching groove...');
+  setStatus('Loading groove...');
 
   try {
-    if (!svgCache.has(id)) svgCache.set(id, fetchSvgText(svgUrl));
-    const svgText = await svgCache.get(id);
-    if (!svgText) throw new Error('Failed to fetch groove');
+    const [[{ Renderer }, { PlaybackManager }, { SkinManager, SKINS }], result] = await Promise.all([playerModules, groovePromise]);
 
-    const [
-      { decodeFromSVG },
-      { Renderer },
-      { PlaybackManager },
-      { SkinManager, SKINS },
-      { DEFAULT_ROUT, DEFAULT_RIN, DEFAULT_CX, DEFAULT_CY, SPIN_SPEED },
-    ] = await Promise.all([
-      import('../codec.js'),
-      import('../renderer.js'),
-      import('../playback.js'),
-      import('../skin.js'),
-      import('../constants.js'),
-    ]);
-
-    const geom = { Rout: DEFAULT_ROUT, Rin: DEFAULT_RIN, cx: DEFAULT_CX, cy: DEFAULT_CY };
-    const result = decodeFromSVG(svgText, geom);
+    const geom = { ...GEOM_DEFAULTS };
     geom.Rout = result.Rout; geom.Rin = result.Rin; geom.cx = result.cx; geom.cy = result.cy;
     const duration = result.samples.length / result.sampleRate;
 

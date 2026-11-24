@@ -96,3 +96,42 @@ export async function unpackGroove(input) {
   }
   return template.replace(PLACEHOLDER, parts.join(' '));
 }
+
+// Decodes stored groove bytes straight to coordinate arrays, without building the SVG text.
+// Returns { header, xs, ys } (header = SVG minus path data), or { svgText } for legacy polyline grooves.
+export async function unpackToCoords(input) {
+  let bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) bytes = await gunzip(bytes);
+
+  if (MAGIC.every((b, i) => bytes[i] === b)) {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const tLen = dv.getUint32(4, true);
+    const header = new TextDecoder().decode(bytes.subarray(8, 8 + tLen));
+    let o = 8 + tLen;
+    const N = dv.getUint32(o, true);
+    o += 4;
+    const xs = new Int32Array(N), ys = new Int32Array(N);
+    let x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+    for (let i = 0; i < N; i++) {
+      const px = i === 0 ? 0 : i === 1 ? x1 : 2 * x1 - x2;
+      const py = i === 0 ? 0 : i === 1 ? y1 : 2 * y1 - y2;
+      // Inline zigzag varints (hot loop).
+      let z = 0, mul = 1, b;
+      do { b = bytes[o++]; z += (b & 127) * mul; mul *= 128; } while (b & 128);
+      const x = px + (z % 2 === 0 ? z / 2 : -(z + 1) / 2);
+      z = 0; mul = 1;
+      do { b = bytes[o++]; z += (b & 127) * mul; mul *= 128; } while (b & 128);
+      const y = py + (z % 2 === 0 ? z / 2 : -(z + 1) / 2);
+      xs[i] = x; ys[i] = y;
+      x2 = x1; y2 = y1; x1 = x; y1 = y;
+    }
+    return { header, xs, ys };
+  }
+
+  const svgText = new TextDecoder().decode(bytes);
+  const { findPathData, parsePathCoords } = await import('./codec.js');
+  const loc = findPathData(svgText);
+  if (!loc) return { svgText };
+  const { xs, ys } = parsePathCoords(svgText, loc.dStart, loc.dEnd);
+  return { header: loc.header, xs, ys };
+}

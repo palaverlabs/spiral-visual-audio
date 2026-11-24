@@ -114,7 +114,7 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
       setStatus(`Uploading ${(blob.size / 1024 / 1024).toFixed(1)} MB...`);
       const { error: uploadError } = await supabase.storage
         .from('records')
-        .upload(filePath, blob, { contentType: 'application/octet-stream' });
+        .upload(filePath, blob, { contentType: 'application/octet-stream', cacheControl: '31536000' });
       if (uploadError) throw uploadError;
 
       // Custom cover art — resize to 600x600 max before upload
@@ -123,7 +123,7 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
         try {
           const resized = await resizeImage(coverFile, 600);
           coverPath = `${user.id}/${recordId}_cover.jpg`;
-          await supabase.storage.from('records').upload(coverPath, resized, { contentType: 'image/jpeg' });
+          await supabase.storage.from('records').upload(coverPath, resized, { contentType: 'image/jpeg', cacheControl: '31536000' });
         } catch (_) { coverPath = null; }
       }
 
@@ -133,7 +133,7 @@ export function renderPublishPanel(container, getGrooveSVG, getMetadata, getThum
         try {
           const thumbBlob = await getThumbBlob();
           thumbPath = `${user.id}/${recordId}_thumb.jpg`;
-          await supabase.storage.from('records').upload(thumbPath, thumbBlob, { contentType: 'image/jpeg' });
+          await supabase.storage.from('records').upload(thumbPath, thumbBlob, { contentType: 'image/jpeg', cacheControl: '31536000' });
         } catch (_) { thumbPath = null; }
       }
 

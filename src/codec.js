@@ -146,7 +146,8 @@ export function encodeToSVG(samples, opts = {}) {
   return { svg, groovePoints, debugMsg };
 }
 
-export function decodeFromSVG(svgString, defaults = {}) {
+// Original DOM-based decoder. Still used for legacy polyline grooves.
+export function decodeFromSVGLegacy(svgString, defaults = {}) {
   const {
     cx: defaultCx = 260,
     cy: defaultCy = 260,
@@ -377,4 +378,208 @@ export function decodeFromSVG(svgString, defaults = {}) {
   }
 
   return { samples: out, sampleRate: sr, turns, vertices: N, Rout, Rin, cx, cy, k, groovePoints };
+}
+
+
+// ── Fast decode path ─────────────────────────────────────────────────
+// Parses only the small SVG header with regexes (no DOMParser, so it runs in a Worker)
+// and decodes from integer coordinate arrays instead of millions of {x,y} objects.
+// Output is identical to decodeFromSVGLegacy for <path> grooves.
+
+const attr = (tag, name) => { const m = tag.match(new RegExp(`\\s${name}="([^"]*)"`)); return m ? m[1] : null; };
+
+// header: the SVG with the groove's path data removed (or a groovepack template).
+export function parseGrooveHeader(header, defaults = {}) {
+  const { cx: dCx = 260, cy: dCy = 260, Rout: dRout = 220, Rin: dRin = 40 } = defaults;
+  const desc = (header.match(/<desc>([\s\S]*?)<\/desc>/) || [])[1] || '';
+  const num = (re, fallback) => { const m = desc.match(re); return m ? Number(m[1]) : fallback; };
+  const meta = {
+    sr: num(/sr=(\d+)/, 22050),
+    originalLength: num(/originalLength=(\d+)/, 0),
+    storedK: num(/k=([\d.]+)/, 0),
+    useMulaw: /mulaw=1/.test(desc),
+    useRiaa: /riaa=1/.test(desc),
+    isStereo: /stereo=1/.test(desc),
+    coordScale: num(/scale=(\d+)/, 1),
+    decodeRiaaHz: num(/riaaHz=(\d+)/, RIAA_CORNER_HZ),
+  };
+  meta.usePreemph = !meta.useRiaa && /preemph=1/.test(desc);
+  const cs = meta.coordScale;
+  const circles = header.match(/<circle\b[^>]*>/g) || [];
+  meta.cx = dCx; meta.cy = dCy; meta.Rout = dRout; meta.Rin = dRin;
+  if (circles[0]) {
+    meta.cx = (parseFloat(attr(circles[0], 'cx')) || dCx * cs) / cs;
+    meta.cy = (parseFloat(attr(circles[0], 'cy')) || dCy * cs) / cs;
+  }
+  if (circles.length >= 2) {
+    meta.Rout = Math.max(30, (parseFloat(attr(circles[0], 'r')) || 228 * cs) / cs - 8);
+    meta.Rin = Math.max(12, (parseFloat(attr(circles[1], 'r')) || 32 * cs) / cs + 8);
+  }
+  return meta;
+}
+
+// Scans "M x0,y0 l dx,dy ..." between [start, end) of text into absolute integer coordinates.
+export function parsePathCoords(text, start = 0, end = text.length) {
+  let count = 0;
+  for (let i = start; i < end; i++) {
+    const c = text.charCodeAt(i);
+    if (c >= 48 && c <= 57 && (i === start || (text.charCodeAt(i - 1) < 48 || text.charCodeAt(i - 1) > 57))) count++;
+  }
+  const N = count >> 1;
+  const xs = new Int32Array(N), ys = new Int32Array(N);
+  let k = 0, v = 0, neg = false, inNum = false, x = 0, y = 0;
+  const flush = () => {
+    const n = neg ? -v : v;
+    const idx = k >> 1;
+    if (idx < N) {
+      if (k & 1) { y = idx === 0 ? n : y + n; ys[idx] = y; }
+      else { x = idx === 0 ? n : x + n; xs[idx] = x; }
+    }
+    k++; v = 0; neg = false; inNum = false;
+  };
+  for (let i = start; i < end; i++) {
+    const c = text.charCodeAt(i);
+    if (c >= 48 && c <= 57) { v = v * 10 + (c - 48); inNum = true; }
+    else { if (inNum) flush(); neg = c === 45; }
+  }
+  if (inNum) flush();
+  return { xs, ys };
+}
+
+export function decodeFromCoords(xs, ys, meta) {
+  const { sr, originalLength, storedK, useMulaw, useRiaa, usePreemph, isStereo, coordScale: cs, decodeRiaaHz, cx, cy, Rout, Rin } = meta;
+  const N = xs.length;
+  if (N < 2) throw new Error('Groove has no audio');
+  const px = new Float64Array(N), py = new Float64Array(N);
+  const groovePoints = new Float32Array(N * 2);
+  for (let i = 0; i < N; i++) {
+    px[i] = xs[i] / cs; py[i] = ys[i] / cs;
+    groovePoints[i * 2] = px[i]; groovePoints[i * 2 + 1] = py[i];
+  }
+
+  let totalAngle = 0;
+  let prevA = Math.atan2(py[0] - cy, px[0] - cx);
+  for (let i = 1; i < N; i++) {
+    const a = Math.atan2(py[i] - cy, px[i] - cx);
+    let d = a - prevA;
+    while (d > Math.PI) d -= TAU;
+    while (d < -Math.PI) d += TAU;
+    totalAngle += d;
+    prevA = a;
+  }
+  const turns = Math.abs(totalAngle) / TAU;
+
+  const k = storedK > 0 ? storedK : (() => {
+    const sampleWindow = Math.min(2000, Math.floor(N / 10));
+    let accum = 0, count = 0;
+    for (let i = 0; i < sampleWindow; i++) {
+      const rBase = archBase(i / (N - 1), Rout, Rin);
+      accum += Math.abs(Math.hypot(px[i] - cx, py[i] - cy) - rBase);
+      count++;
+    }
+    const mad = (accum / Math.max(1, count)) || 1.0;
+    return Math.max(0.5, mad / 0.25);
+  })();
+
+  const rawMid = new Float32Array(N);
+  const rawSide = isStereo ? new Float32Array(N) : null;
+  for (let i = 0; i < N; i++) {
+    const dx = px[i] - cx, dy = py[i] - cy;
+    const t = i / (N - 1);
+    const rBase = archBase(t, Rout, Rin);
+    if (isStereo) {
+      const theta = t * turns * TAU;
+      const cosT = Math.cos(theta), sinT = Math.sin(theta);
+      const midRaw = clamp((dx * cosT + dy * sinT - rBase) / k, -1, 1);
+      const sideRaw = clamp((-dx * sinT + dy * cosT) / k, -1, 1);
+      rawMid[i] = useMulaw ? muLawExpand(midRaw) : midRaw;
+      rawSide[i] = useMulaw ? muLawExpand(sideRaw) : sideRaw;
+    } else {
+      const raw = clamp((Math.hypot(dx, dy) - rBase) / k, -1, 1);
+      rawMid[i] = useMulaw ? muLawExpand(raw) : raw;
+    }
+  }
+
+  const deEmph = (ch) => {
+    if (useRiaa) return riaaDeEmphasis(ch, sr, decodeRiaaHz);
+    if (usePreemph) return deEmphasis(ch);
+    return ch;
+  };
+  let outMid = deEmph(rawMid);
+  let outSide = isStereo ? deEmph(rawSide) : null;
+
+  if (originalLength > 0 && originalLength !== N) {
+    const upsampleRatio = originalLength / N;
+    outMid = lanczos3Resample(outMid, originalLength);
+    if (upsampleRatio > 1) outMid = antiAliasFilter(outMid, upsampleRatio);
+    if (outSide) {
+      outSide = lanczos3Resample(outSide, originalLength);
+      if (upsampleRatio > 1) outSide = antiAliasFilter(outSide, upsampleRatio);
+    }
+  }
+
+  const removeDC = (a) => {
+    let sum = 0;
+    for (let i = 0; i < a.length; i++) sum += a[i];
+    const dc = sum / a.length;
+    if (Math.abs(dc) > 0.001) for (let i = 0; i < a.length; i++) a[i] -= dc;
+  };
+  const fade = (...chs) => {
+    const len = chs[0].length;
+    const fadeLen = Math.min(256, Math.floor(len * FADE_LEN_FRACTION));
+    const fadeDiv = Math.max(1, fadeLen - 1);
+    for (let i = 0; i < fadeLen; i++) {
+      const g = i / fadeDiv;
+      for (const ch of chs) { ch[i] *= g; ch[len - 1 - i] *= g; }
+    }
+  };
+  const geom = { turns, vertices: N, Rout, Rin, cx, cy, k, groovePoints };
+
+  if (isStereo) {
+    removeDC(outMid);
+    const samplesL = new Float32Array(outMid.length);
+    const samplesR = new Float32Array(outMid.length);
+    let peak = 0;
+    for (let i = 0; i < outMid.length; i++) {
+      samplesL[i] = outMid[i] + outSide[i];
+      samplesR[i] = outMid[i] - outSide[i];
+      const a = Math.abs(samplesL[i]), b = Math.abs(samplesR[i]);
+      if (a > peak) peak = a;
+      if (b > peak) peak = b;
+    }
+    if (peak > 0.001 && peak < 0.99) {
+      const g = 1.0 / peak;
+      for (let i = 0; i < samplesL.length; i++) { samplesL[i] *= g; samplesR[i] *= g; }
+    }
+    fade(samplesL, samplesR);
+    return { samples: samplesL, samplesL, samplesR, sampleRate: sr, ...geom };
+  }
+
+  const out = outMid;
+  removeDC(out);
+  let peak = 0;
+  for (let i = 0; i < out.length; i++) { const a = Math.abs(out[i]); if (a > peak) peak = a; }
+  if (peak > 0.001 && peak < 0.99) { const g = 1.0 / peak; for (let i = 0; i < out.length; i++) out[i] *= g; }
+  fade(out);
+  return { samples: out, sampleRate: sr, ...geom };
+}
+
+// Locates the groove path's d="..." in SVG text. Returns null for legacy polyline grooves.
+export function findPathData(svg) {
+  const id = svg.indexOf('id="audioGroove"');
+  if (id < 0) return null;
+  const tagStart = svg.lastIndexOf('<', id);
+  if (!svg.startsWith('<path', tagStart)) return null;
+  const dStart = svg.indexOf(' d="', tagStart) + 4;
+  if (dStart < 4) return null;
+  const dEnd = svg.indexOf('"', dStart);
+  return { dStart, dEnd, header: svg.slice(0, dStart) + svg.slice(dEnd) };
+}
+
+export function decodeFromSVG(svgString, defaults = {}) {
+  const loc = findPathData(svgString);
+  if (!loc) return decodeFromSVGLegacy(svgString, defaults);
+  const meta = parseGrooveHeader(loc.header, defaults);
+  const { xs, ys } = parsePathCoords(svgString, loc.dStart, loc.dEnd);
+  return decodeFromCoords(xs, ys, meta);
 }
