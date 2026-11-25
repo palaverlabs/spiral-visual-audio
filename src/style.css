@@ -2048,3 +2048,33 @@ body.has-mini-player { padding-bottom: calc(64px + env(safe-area-inset-bottom));
 .skin-chip.active .skin-chip-dot { opacity: 1; box-shadow: 0 0 6px var(--dot); }
 .hw-deck > .hw-specs { position: relative; text-align: center; margin: -4px 0 10px; color: var(--hw-dim); }
 .cover-upload-zone.dragover { border-color: var(--accent); background: var(--accent-subtle); }
+
+/* Share-a-clip sheet */
+.share-backdrop {
+  --hw-bg: #0E0E0C; --hw-panel: #161614; --hw-line: #2A2A26; --hw-line-soft: rgba(237,235,228,0.18);
+  --hw-text: #EDEBE4; --hw-muted: #A8A59C; --hw-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+}
+.share-modal {
+  width: 100%; max-width: 420px; max-height: 100%; overflow-y: auto;
+  background: var(--hw-bg); border: 1px solid var(--hw-line); border-radius: 6px; color: var(--hw-text);
+  padding: 16px; display: flex; flex-direction: column; gap: 14px; font-family: var(--hw-mono);
+}
+.share-head { display: flex; justify-content: space-between; align-items: center; }
+.share-head .hw-label, .share-pick .hw-label { font-size: 0.6875rem; letter-spacing: 0.08em; color: var(--hw-muted); }
+.share-x { width: 36px; height: 36px; border: 1px solid var(--hw-line); border-radius: 4px; background: none; color: var(--hw-text); cursor: pointer; }
+.share-backdrop.busy .share-x { opacity: 0.3; cursor: default; }
+.share-stage { align-self: center; height: min(52vh, 520px); aspect-ratio: 9 / 16; border-radius: 4px; overflow: hidden; background: #0b0b0a; border: 1px solid var(--hw-line); }
+.share-canvas, .share-video { display: block; width: 100%; height: 100%; object-fit: contain; background: #0b0b0a; }
+.share-pick { display: flex; flex-direction: column; gap: 8px; }
+.share-pick-row { display: flex; justify-content: space-between; font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.share-pick input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
+.share-note { font-size: 0.75rem; line-height: 1.5; color: var(--hw-muted); min-height: 1.5em; margin: 0; }
+.share-note:empty { display: none; }
+.share-actions { display: flex; flex-direction: column; gap: 8px; }
+.share-actions .hw-btn { width: 100%; }
+@media (max-width: 520px) {
+  .hw .play-wrap, .hw .skip-btn { width: 48px; height: 48px; }
+  .hw-timebar { height: 48px; gap: 10px; padding: 0 10px; font-size: 0.75rem; }
+  .hw-transport { gap: 6px; }
+}

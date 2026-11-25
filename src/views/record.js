@@ -5,6 +5,7 @@ import { skinSwitcherHtml, mountSkinSwitcher } from '../skin-switcher.js';
 import { player, getGroove, fetchRecord, queueFor, coverUrl, GEOM_DEFAULTS } from '../player.js';
 import { esc, rarityTier, cr, timeAgo, userLink, specialBadge, getFees, splitSale, confirmDialog, priceChart, formDialog } from '../ui.js';
 import { makeOfferDialog, acceptOfferDialog, eligibleCopies } from '../offers.js';
+import { openShareDialog } from '../share-dialog.js';
 
 const SVG_PLAY = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>`;
 const SVG_PAUSE = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="5" y="4" width="4" height="16"/><rect x="15" y="4" width="4" height="16"/></svg>`;
@@ -44,6 +45,7 @@ export async function recordView({ id }) {
               <span class="hw-progress"><span id="hwProgress"></span></span>
               <span id="recordTotalTime" class="dim">0:00</span>
             </div>
+            <button class="skip-btn share-btn" id="recordShareBtn" disabled aria-label="Share a clip" title="Share a clip"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg></button>
           </div>
         </div>
         <aside class="hw-release">
@@ -639,7 +641,16 @@ export async function recordView({ id }) {
     discEl.addEventListener('pointerup', endDrag);
     discEl.addEventListener('pointercancel', endDrag);
 
+    let currentSkin = skin;
+    const shareBtn = document.getElementById('recordShareBtn');
+    shareBtn.disabled = false;
+    shareBtn.addEventListener('click', () => openShareDialog({
+      record, groove: result, geom, skin: currentSkin, coverSrc: coverUrl(record),
+      startAt: (isMine() ? player.progress : local.touched ? local.progress : 0) * duration,
+    }));
+
     mountSkinSwitcher(document.querySelector('.hw-deck .skin-picker'), next => {
+      currentSkin = next;
       renderer.setSkin(next.canvas, result.groovePoints, geom);
       redraw();
     });
