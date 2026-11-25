@@ -42,3 +42,31 @@ Spiral starts its own label to release songs independently, mainly to supply the
 2. Draft the standard artist license (term, exclusivity window, splits, resale commission).
 3. Sort out the mechanical/publishing licensing path.
 4. Sign the anchor artist and line up the first 5 to 10 releases.
+
+## Ownership and rights
+
+Collectors should truly own their Spirals. US first sale doctrine doesn't cover digital resale (*Capitol Records v. ReDigi*, 2d Cir. 2018), so ownership has to be granted by contract. These terms go into the buyer agreement and the artist license.
+
+### Buyer rights
+
+- **Perpetual and irrevocable:** a buyer can keep, play, and resell their copy forever. Spiral can't revoke it.
+- **You hold the file:** every purchase includes the downloadable Spiral SVG, which plays without a Spiral account.
+- **Seller-set resale pricing,** with one owner at a time. A resale transfers the copy; the seller doesn't keep a playable one in their Spiral library.
+- **Plain wording:** the terms say "you own this copy" in plain language, not license jargon.
+
+### If Spiral shuts down
+
+- Buyers keep their SVGs and the right to play them.
+- The resale license and the artist's resale commission survive, passing to the artist or a named successor, so copies stay resellable and artists keep earning.
+
+### Per-copy serialization
+
+- Each copy's SVG embeds unique identifiers: pressing number (e.g. 12 of 500), a copy ID, and a signature from Spiral so it can be verified.
+- Each copy ID links to a provenance record: who has owned it, when, and the resale history.
+- The signature proves which copy is the authentic, current one, so the resale market and artist commission stay intact even though SVGs can be copied.
+
+### Next steps
+
+1. Have a lawyer review and draft the buyer terms (perpetual rights, transfer, shutdown survival, plain "you own this copy" wording).
+2. Add matching terms to the artist license so the resale license and commission survive a shutdown.
+3. Design the serialization format (fields embedded in the SVG, signing scheme) and the provenance/ownership history store.
