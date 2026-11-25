@@ -65,7 +65,7 @@ export async function queueFor(record) {
   return ids.includes(record.id) ? ids : [record.id, ...ids];
 }
 
-const audioOf = g => ({ left: g.samples, right: g.samplesR || null, sampleRate: g.sampleRate });
+const audioOf = g => ({ left: g.samples, right: g.samplesR || null, sampleRate: g.sampleRate, stream: g.complete === false ? g : null });
 
 class Player {
   constructor() {
@@ -196,7 +196,9 @@ class Player {
   }
 
   seek(p) {
-    this.progress = Math.max(0, Math.min(1, p));
+    // A streaming groove can only be played as far as it has downloaded.
+    const g = this.groove, max = g && g.complete === false ? Math.max(0, (g.loaded - 1) / g.vertices) : 1;
+    this.progress = Math.max(0, Math.min(max, p));
     if (this.pm.isPlaying) this.pm.seek(this.progress);
     else this._frame();
   }

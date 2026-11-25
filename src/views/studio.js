@@ -7,6 +7,7 @@ import { DEFAULT_ROUT, DEFAULT_RIN, DEFAULT_CX, DEFAULT_CY, TAU, SPIN_SPEED } fr
 import { renderPublishPanel } from '../publish.js';
 import { supabase } from '../supabase.js';
 import { player } from '../player.js';
+import { exactPCM, NotLosslessError, wavBlob } from '../pcm.js';
 
 const STUDIO_HTML = `
   <div class="app">
@@ -44,6 +45,13 @@ const STUDIO_HTML = `
         <button class="action-btn" id="generateGroove" disabled>ENCODE</button>
         <button class="action-btn" id="downloadSVG" disabled>&#8595; SVG</button>
         <button class="action-btn" id="downloadAudio" disabled>&#8595; WAV</button>
+      </div>
+
+      <div class="press-row" role="radiogroup" aria-label="Pressing quality">
+        <span class="ctrl-label">Pressing</span>
+        <button class="press-opt" data-press="standard" role="radio">Standard</button>
+        <button class="press-opt" data-press="master" role="radio">Master</button>
+        <span class="press-hint" id="pressHint"></span>
       </div>
 
       <div class="speed-row">
@@ -213,6 +221,7 @@ class App {
     });
     document.getElementById('downloadSVG').addEventListener('click', () => this.downloadSVG());
     document.getElementById('downloadAudio').addEventListener('click', () => this.downloadAudio());
+    this._initPressing();
 
     const canvas = document.getElementById('grooveCanvas');
     canvas.addEventListener('mousedown',  (e) => this._onDragStart(e));
@@ -293,6 +302,9 @@ class App {
 
       audioContext.close();
 
+      this.sourceFile = file;
+      this._masterPCM = null;
+      this.decodedInts = null;
       this.originalAudio = audioBuffer.getChannelData(0);
       this.originalAudioR = audioBuffer.numberOfChannels > 1
         ? audioBuffer.getChannelData(1) : null;
@@ -337,6 +349,8 @@ class App {
     const result = decodeFromSVG(svgText, this._geom());
 
     this.grooveSVG = svgText;
+    this.decodedInts = result.lossless ? { intL: result.intL, intR: result.intR || null, bits: result.bits } : null;
+    this.sourceFile = null;
     this.decodedAudio = result.samples;
     this.decodedAudioR = result.samplesR || null;
     this.sampleRate = result.sampleRate;
@@ -477,7 +491,7 @@ class App {
 
   // Encodes in a worker and draws the groove being cut as the points stream back.
   // The cut is paced to take at least CUT_MIN_MS so it reads as a drawing, never as a flash.
-  generateGroove() {
+  async generateGroove() {
     if (!this.originalAudio) {
       this._statusError('Please load an audio file first');
       return;
@@ -493,6 +507,22 @@ class App {
     btn.textContent = '0%';
 
     const quality = parseInt(document.getElementById('qualitySlider').value);
+    const master = this.pressing === 'master';
+    let pcm = null;
+    if (master) {
+      try {
+        if (!this.sourceFile) throw new NotLosslessError('Master quality needs the original audio file. Drop it in again.');
+        btn.textContent = 'READING';
+        pcm = this._masterPCM || (this._masterPCM = await exactPCM(this.sourceFile));
+      } catch (err) {
+        this._encoding = false;
+        btn.classList.remove('loading');
+        btn.textContent = 'ENCODE';
+        btn.disabled = false;
+        this._statusError(err instanceof NotLosslessError ? err.message : `Couldn't read the file for Master quality: ${err.message}`);
+        return;
+      }
+    }
     const turns = parseInt(document.getElementById('turnsSlider').value);
     const sensitivity = parseInt(document.getElementById('sensitivitySlider').value);
     const geom = this._geom();
@@ -525,6 +555,7 @@ class App {
     const finish = d => {
       reset();
       this.grooveSVG = d.svg;
+      this.decodedInts = d.ints;
       this.groovePoints = d.groovePoints;
       this.decodedAudio = d.samples;
       this.decodedAudioR = d.samplesR;
@@ -545,7 +576,9 @@ class App {
       const sizeBytes = d.svg.length;
       const sizeLabel = sizeBytes > 1024 * 1024 ? `${(sizeBytes / 1024 / 1024).toFixed(1)} MB` : `${(sizeBytes / 1024).toFixed(0)} KB`;
       this.debug(`Groove generated: ${sizeLabel} SVG`);
-      this._setStatus(`Groove cut (${sizeLabel}). Ready for playback!`, 'success');
+      this._setStatus(d.ints
+        ? `Master pressing: ${d.ints.bits}-bit ${(d.sampleRate / 1000).toFixed(1)} kHz, bit-perfect ✓. Ready for playback!`
+        : `Groove cut (${sizeLabel}). Ready for playback!`, 'success');
       this._showPublishPanel();
     };
 
@@ -583,7 +616,13 @@ class App {
     };
     worker.onerror = e => worker.onmessage({ data: { type: 'error', message: e.message } });
 
-    worker.postMessage({
+    worker.postMessage(master ? {
+      lossless: true,
+      left: pcm.left,
+      right: pcm.right,
+      opts: { sr: pcm.sampleRate, bits: pcm.bits, turns, sensitivity, ...geom },
+      geom,
+    } : {
       left: this.originalAudio,
       right: this.originalAudioR || null,
       opts: { sr: this.sampleRate, quality, turns, sensitivity, ...geom },
@@ -601,7 +640,7 @@ class App {
       () => this.grooveSVG,
       () => ({
         duration: this.duration,
-        quality: parseInt(document.getElementById('qualitySlider').value),
+        quality: this.decodedInts ? 6 : parseInt(document.getElementById('qualitySlider').value),
         turns: this.spiralTurns,
         sampleRate: this.sampleRate,
         stereo: !!(this.originalAudioR || this.decodedAudioR),
@@ -652,7 +691,37 @@ class App {
     this.debug('Visual groove SVG downloaded');
   }
 
+  _initPressing() {
+    const HINT = {
+      standard: 'Smaller file, vinyl-style EQ. Any audio or video.',
+      master: 'Bit-perfect copy of your WAV, AIFF or 16-bit FLAC. About 65–80% of WAV size.',
+    };
+    let saved = null;
+    try { saved = localStorage.getItem('spiral-pressing'); } catch {}
+    const set = mode => {
+      this.pressing = mode;
+      document.querySelectorAll('.press-opt').forEach(b => {
+        const on = b.dataset.press === mode;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-checked', on);
+      });
+      document.getElementById('pressHint').textContent = HINT[mode];
+    };
+    set(saved === 'master' ? 'master' : 'standard');
+    document.querySelector('.press-row').addEventListener('click', e => {
+      const mode = e.target.closest('.press-opt')?.dataset.press;
+      if (!mode || this._encoding) return;
+      set(mode);
+      try { localStorage.setItem('spiral-pressing', mode); } catch {}
+    });
+  }
+
   downloadAudio() {
+    if (this.decodedInts) {
+      const { intL, intR, bits } = this.decodedInts;
+      this._triggerDownload(wavBlob(intL, intR, this.sampleRate, bits), this._downloadName('wav'));
+      return;
+    }
     const audio = this._getPlaybackAudio();
     if (!audio) return;
     this._triggerDownload(this.playback.createWAVBlob(audio), this._downloadName('wav'));
@@ -831,5 +900,6 @@ class App {
 export function mountStudio() {
   document.getElementById('view').innerHTML = STUDIO_HTML;
   const app = new App();
+  if (import.meta.env.DEV) window.__studio = app; // test hook, stripped from production builds
   return () => app.destroy();
 }

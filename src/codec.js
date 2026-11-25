@@ -411,6 +411,14 @@ export function parseGrooveHeader(header, defaults = {}) {
     decodeRiaaHz: num(/riaaHz=(\d+)/, RIAA_CORNER_HZ),
   };
   meta.usePreemph = !meta.useRiaa && /preemph=1/.test(desc);
+  meta.lossless = /lossless=1/.test(desc);
+  if (meta.lossless) {
+    meta.bits = num(/bits=(\d+)/, 16);
+    meta.q = num(/\bq=(\d+)/, 2);
+    meta.turns = num(/turns=([\d.]+)/, 1);
+    meta.descRout = num(/Rout=([\d.]+)/, dRout);
+    meta.descRin = num(/Rin=([\d.]+)/, dRin);
+  }
   const cs = meta.coordScale;
   const circles = header.match(/<circle\b[^>]*>/g) || [];
   meta.cx = dCx; meta.cy = dCy; meta.Rout = dRout; meta.Rin = dRin;
@@ -422,18 +430,19 @@ export function parseGrooveHeader(header, defaults = {}) {
     meta.Rout = Math.max(30, (parseFloat(attr(circles[0], 'r')) || 228 * cs) / cs - 8);
     meta.Rin = Math.max(12, (parseFloat(attr(circles[1], 'r')) || 32 * cs) / cs + 8);
   }
+  if (meta.lossless) { meta.Rout = meta.descRout; meta.Rin = meta.descRin; }
   return meta;
 }
 
 // Scans "M x0,y0 l dx,dy ..." between [start, end) of text into absolute integer coordinates.
-export function parsePathCoords(text, start = 0, end = text.length) {
+export function parsePathCoords(text, start = 0, end = text.length, Arr = Int32Array) {
   let count = 0;
   for (let i = start; i < end; i++) {
     const c = text.charCodeAt(i);
     if (c >= 48 && c <= 57 && (i === start || (text.charCodeAt(i - 1) < 48 || text.charCodeAt(i - 1) > 57))) count++;
   }
   const N = count >> 1;
-  const xs = new Int32Array(N), ys = new Int32Array(N);
+  const xs = new Arr(N), ys = new Arr(N);
   let k = 0, v = 0, neg = false, inNum = false, x = 0, y = 0;
   const flush = () => {
     const n = neg ? -v : v;
@@ -454,6 +463,7 @@ export function parsePathCoords(text, start = 0, end = text.length) {
 }
 
 export function decodeFromCoords(xs, ys, meta) {
+  if (meta.lossless) return decodeLosslessCoords(xs, ys, meta);
   const { sr, originalLength, storedK, useMulaw, useRiaa, usePreemph, isStereo, coordScale: cs, decodeRiaaHz, cx, cy, Rout, Rin } = meta;
   const N = xs.length;
   if (N < 2) throw new Error('Groove has no audio');
@@ -587,6 +597,146 @@ export function decodeFromSVG(svgString, defaults = {}) {
   const loc = findPathData(svgString);
   if (!loc) return decodeFromSVGLegacy(svgString, defaults);
   const meta = parseGrooveHeader(loc.header, defaults);
-  const { xs, ys } = parsePathCoords(svgString, loc.dStart, loc.dEnd);
+  const { xs, ys } = parsePathCoords(svgString, loc.dStart, loc.dEnd, meta.lossless ? Float64Array : Int32Array);
   return decodeFromCoords(xs, ys, meta);
+}
+
+// ── Master quality (lossless) ────────────────────────────────────────
+// Integer PCM is cut straight into the groove: no resampling, limiting, EQ or normalising.
+// Each sample step is LOSSLESS_Q coordinate units, and the coordinate scale is chosen so full
+// scale still deflects the groove by `k` px (it looks like any other record). Rounding a vertex
+// to the integer grid moves it ≤ √0.5 units along any axis, which is < LOSSLESS_Q / 2, so the
+// decoder recovers every sample exactly by projecting back and rounding.
+// Stereo uses reversible integer mid/side (as FLAC does): mid = (L+R)>>1, side = L−R.
+// Geometry uses detSinCos (only + − × ÷, which IEEE makes identical in every engine), so the same
+// samples always cut the same vertices; that lets storage keep samples and rebuild the groove.
+const LOSSLESS_Q = 2;
+const HALF_PI_HI = 1.5707963267341256, HALF_PI_LO = 6.077100506506192e-11; // Cody–Waite split of π/2
+
+export function detSinCos(theta) {
+  const n = Math.round(theta / (HALF_PI_HI + HALF_PI_LO));
+  const r = (theta - n * HALF_PI_HI) - n * HALF_PI_LO;
+  const r2 = r * r;
+  // Taylor series on |r| ≤ π/4: error < 1e-17.
+  const sn = r * (1 + r2 * (-1 / 6 + r2 * (1 / 120 + r2 * (-1 / 5040 + r2 * (1 / 362880 + r2 * (-1 / 39916800 + r2 * (1 / 6227020800 + r2 * (-1 / 1307674368000))))))));
+  const cs = 1 + r2 * (-1 / 2 + r2 * (1 / 24 + r2 * (-1 / 720 + r2 * (1 / 40320 + r2 * (-1 / 3628800 + r2 * (1 / 479001600 + r2 * (-1 / 87178291200 + r2 / 20922789888000)))))));
+  switch (((n % 4) + 4) % 4) {
+    case 0: return [sn, cs];
+    case 1: return [cs, -sn];
+    case 2: return [-sn, -cs];
+    default: return [-cs, sn];
+  }
+}
+
+// Shared by encoder, decoder and packer: everything about the groove's shape except the samples.
+export function losslessGeometry({ N, turns, Rout, Rin, cx, cy, S, q = LOSSLESS_Q }) {
+  const cxS = Math.round(cx * S), cyS = Math.round(cy * S);
+  const RoutS = Rout * S, RinS = Rin * S;
+  const frame = i => {
+    const t = i / (N - 1);
+    const [sinT, cosT] = detSinCos(t * turns * TAU);
+    return { sinT, cosT, rB: archBase(t, RoutS, RinS) };
+  };
+  return {
+    cxS, cyS, q, frame,
+    vertex(i, mid, side) {
+      const { sinT, cosT, rB } = frame(i);
+      const r = rB + q * mid, tang = q * side;
+      return [Math.round(cxS + r * cosT - tang * sinT), Math.round(cyS + r * sinT + tang * cosT)];
+    },
+  };
+}
+
+export const losslessScale = (bits, k) => Math.max(1, Math.round((2 ** (bits - 1)) * LOSSLESS_Q / k));
+
+export function losslessSvg({ sr, bits, turns, k, Rout, Rin, cx, cy, S, N, isStereo, pathData }) {
+  const cxS = Math.round(cx * S), cyS = Math.round(cy * S);
+  const outerR = Math.round((Rout + 8) * S), innerR = Math.max(12 * S, Math.round((Rin - 8) * S));
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="520" height="520" viewBox="0 0 ${520 * S} ${520 * S}" role="img" aria-label="Geometry-only spiral record">
+  <defs>
+    <radialGradient id="discGrad" r="60%">
+      <stop offset="0%" stop-color="#0e1217"/>
+      <stop offset="100%" stop-color="#0b0f14"/>
+    </radialGradient>
+  </defs>
+  <circle cx="${cxS}" cy="${cyS}" r="${outerR}" fill="url(#discGrad)" stroke="#233242" stroke-width="${2 * S}"/>
+  <circle cx="${cxS}" cy="${cyS}" r="${innerR}" fill="#0a0d11" stroke="#22303b" stroke-width="${2 * S}"/>
+  <path id="audioGroove" fill="none" stroke="#5ad8cf" stroke-width="${0.8 * S}" stroke-linecap="round" d="${pathData}" />
+  <desc>Geometry-only spiral audio. sr=${sr}; Rout=${Rout}; Rin=${Rin}; turns=${turns}; k=${k.toFixed(6)}; originalLength=${N}; lossless=1; bits=${bits}; q=${LOSSLESS_Q}; scale=${S}${isStereo ? '; stereo=1' : ''}.</desc>
+</svg>`;
+}
+
+export function encodeLossless(left, right, opts = {}) {
+  const {
+    sr = 44100, bits = 16, turns = 6, sensitivity = 5, Rout = 220, Rin = 40, cx = 260, cy = 260,
+    onStage = null, onPoints = null,
+  } = opts;
+  const isStereo = !!right;
+  const N = left.length;
+  const k = Math.min(sensitivity, 0.45 * (Rout - Rin) / Math.max(1, turns));
+  const S = losslessScale(bits, k);
+  const geo = losslessGeometry({ N, turns, Rout, Rin, cx, cy, S });
+
+  onStage?.('Cutting');
+  const pathParts = new Array(N);
+  const groovePoints = new Float32Array(N * 2);
+  const chunk = Math.max(1, Math.ceil(N / 240));
+  let reported = 0, prevX = 0, prevY = 0;
+  for (let i = 0; i < N; i++) {
+    const L = left[i], R = isStereo ? right[i] : 0;
+    const [x, y] = geo.vertex(i, isStereo ? (L + R) >> 1 : L, isStereo ? L - R : 0);
+    pathParts[i] = i === 0 ? `M ${x},${y} l` : `${x - prevX},${y - prevY}`;
+    prevX = x; prevY = y;
+    groovePoints[i * 2] = x / S;
+    groovePoints[i * 2 + 1] = y / S;
+    if (onPoints && (i + 1 - reported >= chunk || i === N - 1)) { onPoints(reported, i + 1, groovePoints); reported = i + 1; }
+  }
+  const svg = losslessSvg({ sr, bits, turns, k, Rout, Rin, cx, cy, S, N, isStereo, pathData: pathParts.join(' ') });
+  const debugMsg = `Master quality: ${N} samples, ${bits}-bit ${sr}Hz${isStereo ? ' stereo (integer M/S)' : ' mono'}, scale=${S}, lossless`;
+  return { svg, groovePoints, debugMsg };
+}
+
+// Groove vertices → the integer mid/side samples that cut them (exact inverse of the vertex map).
+export function losslessSamplesFromCoords(xs, ys, meta) {
+  const { bits, q, isStereo, coordScale: S, cx, cy, Rout, Rin, turns } = meta;
+  const N = xs.length;
+  const geo = losslessGeometry({ N, turns, Rout, Rin, cx, cy, S, q });
+  const mid = new Int32Array(N), side = isStereo ? new Int32Array(N) : null;
+  for (let i = 0; i < N; i++) {
+    const { sinT, cosT, rB } = geo.frame(i);
+    const dx = xs[i] - geo.cxS, dy = ys[i] - geo.cyS;
+    mid[i] = Math.round((dx * cosT + dy * sinT - rB) / q);
+    if (side) side[i] = Math.round((-dx * sinT + dy * cosT) / q);
+  }
+  return { mid, side, geo, bits };
+}
+
+export function losslessResult(mid, side, xs, ys, meta) {
+  const { sr, bits, isStereo, coordScale: S, cx, cy, Rout, Rin, turns } = meta;
+  const N = mid.length, full = 2 ** (bits - 1);
+  const intL = new Int32Array(N), intR = isStereo ? new Int32Array(N) : null;
+  const samples = new Float32Array(N), samplesR = isStereo ? new Float32Array(N) : null;
+  const groovePoints = new Float32Array(N * 2);
+  for (let i = 0; i < N; i++) {
+    if (isStereo) {
+      const sum = 2 * mid[i] + (side[i] & 1);
+      const L = (sum + side[i]) >> 1, R = (sum - side[i]) >> 1;
+      intL[i] = L; intR[i] = R; samples[i] = L / full; samplesR[i] = R / full;
+    } else {
+      intL[i] = mid[i]; samples[i] = mid[i] / full;
+    }
+    groovePoints[i * 2] = xs[i] / S;
+    groovePoints[i * 2 + 1] = ys[i] / S;
+  }
+  const k = Math.min(10, 0.45 * (Rout - Rin) / Math.max(1, turns));
+  return {
+    samples, ...(isStereo ? { samplesL: samples, samplesR } : {}), sampleRate: sr,
+    turns, vertices: N, Rout, Rin, cx, cy, k, groovePoints, lossless: true, bits, intL, intR,
+  };
+}
+
+export function decodeLosslessCoords(xs, ys, meta) {
+  if (xs.length < 2) throw new Error('Groove has no audio');
+  const { mid, side } = losslessSamplesFromCoords(xs, ys, meta);
+  return losslessResult(mid, side, xs, ys, meta);
 }

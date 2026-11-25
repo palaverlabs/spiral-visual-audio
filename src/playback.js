@@ -40,6 +40,11 @@ export class PlaybackManager {
     this.stop();
     this.isPlaying = true;
 
+    // A streaming (Master) groove is still filling in: hand over what's ready, then append the rest.
+    const live = audio.stream && !audio.stream.complete ? audio.stream : null;
+    if (live && audio.sampleRate < MIN_PLAYBACK_RATE) await live.done;
+    const streaming = live && !live.complete;
+
     let left = audio.left || audio.samples;
     let right = audio.right || null;
     let rate = audio.sampleRate;
@@ -114,9 +119,18 @@ export class PlaybackManager {
         type: 'load',
         left: leftCopy,
         right: rightCopy,
+        ready: streaming ? live.loaded : left.length,
         startPos: Math.round(startProgress * left.length),
         adv: this._baseAdv * speed,
       }, transferList);
+      if (streaming) {
+        const port = this._node.port;
+        this._unsubStream = live.onChunk((from, to) => {
+          if (to <= from) return;
+          const l = left.slice(from, to).buffer, r = right ? right.slice(from, to).buffer : null;
+          port.postMessage({ type: 'append', from, left: l, right: r, ready: to }, r ? [l, r] : [l]);
+        });
+      }
 
       this._animate();
       this.onDebug(`Playback ready: ${speed}x, ${this._totalDuration.toFixed(2)}s${isStereo ? ' [stereo]' : ''}`);
@@ -147,6 +161,8 @@ export class PlaybackManager {
 
   stop() {
     this.isPlaying = false;
+    this._unsubStream?.();
+    this._unsubStream = null;
 
     if (this.animationId) {
       cancelAnimationFrame(this.animationId);

@@ -2078,3 +2078,13 @@ body.has-mini-player { padding-bottom: calc(64px + env(safe-area-inset-bottom));
   .hw-timebar { height: 48px; gap: 10px; padding: 0 10px; font-size: 0.75rem; }
   .hw-transport { gap: 6px; }
 }
+
+/* Studio: Standard / Master pressing */
+.press-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.press-opt {
+  height: 32px; padding: 0 12px; border-radius: 4px; border: 1px solid var(--panel-border);
+  background: transparent; color: var(--text-secondary); font: inherit; font-size: 0.75rem;
+  letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer;
+}
+.press-opt.active { border-color: var(--accent); color: var(--accent); background: var(--accent-subtle); }
+.press-hint { flex-basis: 100%; font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4; }

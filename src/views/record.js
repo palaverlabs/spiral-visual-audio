@@ -481,7 +481,7 @@ export async function recordView({ id }) {
 
     document.getElementById('recordTotalTime').textContent = fmt(duration);
     document.getElementById('hwSpecs').textContent =
-      `${(result.sampleRate / 1000).toFixed(1)} KHZ · ${result.samplesR ? 'STEREO' : 'MONO'} · ${Math.round(result.turns)} TURNS`;
+      `${result.lossless ? `MASTER · ${result.bits}-BIT · ` : ''}${(result.sampleRate / 1000).toFixed(1)} KHZ · ${result.samplesR ? 'STEREO' : 'MONO'} · ${Math.round(result.turns)} TURNS`;
     setStatus('', 'success');
 
     // This page drives the app-wide player when it holds this record; otherwise the deck keeps its own
@@ -493,7 +493,15 @@ export async function recordView({ id }) {
 
     const skin = new SkinManager().restore() || SKINS.owl;
     const renderer = new Renderer(document.getElementById('recordCanvas'));
-    renderer.setSkin(skin.canvas, result.groovePoints, geom);
+    // A Master groove streams in: draw what's arrived with the cutter at its end, then the full groove.
+    const streaming = () => result.complete === false;
+    const recut = canvasSkin => {
+      renderer.setSkin(canvasSkin);
+      renderer.beginCut();
+      if (result.loaded) renderer.cutPoints(result.groovePoints.subarray(0, result.loaded * 2), geom);
+    };
+    if (streaming()) recut(skin.canvas);
+    else renderer.setSkin(skin.canvas, result.groovePoints, geom);
 
     const timeEl = document.getElementById('recordCurrentTime');
     const progressEl = document.getElementById('hwProgress');
@@ -651,13 +659,38 @@ export async function recordView({ id }) {
 
     mountSkinSwitcher(document.querySelector('.hw-deck .skin-picker'), next => {
       currentSkin = next;
-      renderer.setSkin(next.canvas, result.groovePoints, geom);
+      if (streaming()) recut(next.canvas);
+      else renderer.setSkin(next.canvas, result.groovePoints, geom);
       redraw();
     });
+
+    // Streaming: extend the groove as stretches decode; swap in the finished groove at the end.
+    let offStream = () => {};
+    if (streaming()) {
+      const specs = document.getElementById('hwSpecs'), specsText = specs.textContent;
+      shareBtn.disabled = true;
+      const showLoad = () => { specs.textContent = `LOADING ${Math.floor((result.loaded / result.vertices) * 100)}% · ${specsText}`; };
+      showLoad();
+      offStream = result.onChunk((from, to) => {
+        if (result.complete) {
+          renderer.endCut();
+          renderer.setSkin(currentSkin.canvas, result.groovePoints, geom);
+          specs.textContent = specsText;
+          shareBtn.disabled = false;
+          offStream();
+        } else {
+          if (to > from) renderer.cutPoints(result.groovePoints.subarray(from * 2, to * 2), geom);
+          showLoad();
+        }
+        if (!(isMine() && player.pm.isPlaying)) redraw();
+      });
+      result.done.catch(err => { specs.textContent = `LOAD FAILED · ${err.message}`.toUpperCase(); });
+    }
 
     // Mint: cut a fresh copy on the deck. If it's playing, the record keeps spinning while the groove is laid down.
     let mintAnim = 0;
     onMinted = edition => {
+      if (streaming()) return; // the deck is already busy cutting the download
       const pts = result.groovePoints, total = pts.length / 2, ms = 3500, t0 = performance.now();
       const specs = document.getElementById('hwSpecs'), specsText = specs.textContent;
       cancelAnimationFrame(mintAnim);
@@ -680,7 +713,7 @@ export async function recordView({ id }) {
     renderState();
 
     // Audio keeps playing after you leave; the mini player takes over.
-    return () => { offFrame(); offState(); cancelAnimationFrame(mintAnim); renderer.endCut(); };
+    return () => { offFrame(); offState(); offStream(); cancelAnimationFrame(mintAnim); renderer.endCut(); };
   } catch (err) {
     setStatus(`Failed to load: ${err.message}`, 'error');
   }

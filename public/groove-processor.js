@@ -5,6 +5,8 @@
 // adv = 0: paused/held
 // adv = 2.0: 2x forward, etc.
 // Supports mono (left only) and stereo (left + right) buffers.
+// Streaming: only the first `ready` samples exist yet; 'append' fills in more as they decode.
+// If the stylus catches up with the download it holds in place (silence) until more arrives.
 class GrooveProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -13,20 +15,28 @@ class GrooveProcessor extends AudioWorkletProcessor {
     this.pos = 0;
     this.adv = 1.0;
     this.tick = 0;
+    this.ready = 0;
 
     this.port.onmessage = ({ data }) => {
       switch (data.type) {
         case 'load':
           this.left = new Float32Array(data.left);
           this.right = data.right ? new Float32Array(data.right) : null;
-          this.pos = data.startPos;
+          this.ready = data.ready ?? this.left.length;
+          this.pos = Math.min(data.startPos, Math.max(0, this.ready - 1));
           this.adv = data.adv;
+          break;
+        case 'append':
+          if (!this.left) break;
+          this.left.set(new Float32Array(data.left), data.from);
+          if (this.right && data.right) this.right.set(new Float32Array(data.right), data.from);
+          this.ready = Math.max(this.ready, data.ready);
           break;
         case 'adv':
           this.adv = data.adv;
           break;
         case 'seek':
-          this.pos = Math.max(0, Math.min(this.left ? this.left.length - 1 : 0, data.pos));
+          this.pos = Math.max(0, Math.min(this.left ? this.ready - 1 : 0, data.pos));
           break;
       }
     };
@@ -53,6 +63,12 @@ class GrooveProcessor extends AudioWorkletProcessor {
         outL[i] = 0;
         if (outR) outR[i] = 0;
         this.pos = 0;
+        continue;
+      }
+      if (this.ready < N && p >= this.ready - 1 && this.adv > 0) {
+        // Still downloading: hold here until the groove reaches us.
+        outL[i] = 0;
+        if (outR) outR[i] = 0;
         continue;
       }
       if (p >= N - 1) {
