@@ -6,6 +6,7 @@ import { SPIN_SPEED } from './constants.js';
 export const CLIP_W = 1080, CLIP_H = 1920;
 export const CLIP_SECONDS = 15;
 const FADE = 0.35;
+const FPS = 30;
 
 const MIMES = [
   'video/mp4;codecs=avc1.42E01F,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a', 'video/mp4',
@@ -74,59 +75,71 @@ function resample(src, from, to) {
 }
 
 // Builds the scene once; frame(t) paints the composite for clip-time t (seconds).
+// Layout is authored at 1080x1920 and rendered at 720x1280: phones can't composite + encode 1080p in real time.
+const OUT = 720 / CLIP_W;
 export async function createClipScene({ canvas, record, groove, geom, skin, coverSrc, start, seconds }) {
-  canvas.width = CLIP_W; canvas.height = CLIP_H;
+  const OW = Math.round(CLIP_W * OUT), OH = Math.round(CLIP_H * OUT);
+  canvas.width = OW; canvas.height = OH;
   const g = canvas.getContext('2d');
+  const D = 980, dx = (CLIP_W - D) / 2, dy = 300;
   const disc = document.createElement('canvas');
-  disc.width = disc.height = 1000;
+  disc.width = disc.height = Math.round(D * OUT);
   const renderer = new Renderer(disc);
   renderer.setSkin(skin.canvas, groove.groovePoints, geom);
-  const backdrop = blurredBackdrop(await loadImage(coverSrc));
+  const [img] = await Promise.all([loadImage(coverSrc), document.fonts?.ready]);
   const accent = css('--accent', '#d4880a');
   const duration = groove.samples.length / groove.sampleRate;
   const by = record.artist || (record.users?.username ? `@${record.users.username}` : '');
-  const D = 980, dx = (CLIP_W - D) / 2, dy = 300;
+  const bx = 80, bw = CLIP_W - 160, barY = 1600;
 
+  // Everything that doesn't move, drawn once.
+  const still = document.createElement('canvas');
+  still.width = OW; still.height = OH;
+  const sg = still.getContext('2d');
+  sg.drawImage(blurredBackdrop(img), 0, 0, OW, OH);
+  sg.scale(OUT, OUT);
+  sg.textBaseline = 'alphabetic';
+  sg.fillStyle = accent;
+  sg.font = `500 30px 'IBM Plex Mono', ui-monospace, monospace`;
+  sg.textAlign = 'left';
+  sg.fillText('SPIRAL AUDIO', 80, 180);
+  sg.textAlign = 'right';
+  sg.fillStyle = 'rgba(237,235,228,0.55)';
+  sg.fillText('● NOW SPINNING', CLIP_W - 80, 180);
+  sg.textAlign = 'left';
+  sg.fillStyle = '#EDEBE4';
+  sg.font = `600 76px 'IBM Plex Sans', system-ui, sans-serif`;
+  sg.fillText(fitText(sg, record.title || 'Untitled', CLIP_W - 160), 80, 1440);
+  if (by) {
+    sg.fillStyle = 'rgba(237,235,228,0.65)';
+    sg.font = `400 44px 'IBM Plex Sans', system-ui, sans-serif`;
+    sg.fillText(fitText(sg, by, CLIP_W - 160), 80, 1510);
+  }
+  sg.fillStyle = 'rgba(237,235,228,0.18)';
+  sg.fillRect(bx, barY, bw, 6);
+  sg.font = `400 30px 'IBM Plex Mono', ui-monospace, monospace`;
+  sg.fillStyle = 'rgba(237,235,228,0.65)';
+  sg.textAlign = 'right';
+  sg.fillText(fmt(duration), bx + bw, barY + 56);
+  sg.textAlign = 'center';
+  sg.fillStyle = 'rgba(237,235,228,0.8)';
+  sg.font = `500 34px 'IBM Plex Mono', ui-monospace, monospace`;
+  sg.fillText('SPIRALAUD.IO', CLIP_W / 2, 1810);
+
+  const timeFont = `400 30px 'IBM Plex Mono', ui-monospace, monospace`;
   const frame = (t, amplitude = 0, freq = null) => {
     const pos = Math.min(duration, start + t);
     renderer.drawDiscWithGroove(t * SPIN_SPEED, pos / duration, geom, amplitude, freq);
-    g.drawImage(backdrop, 0, 0);
-    g.drawImage(disc, dx, dy, D, D);
-
-    g.textBaseline = 'alphabetic';
-    g.fillStyle = accent;
-    g.font = `500 30px 'IBM Plex Mono', ui-monospace, monospace`;
-    g.textAlign = 'left';
-    g.fillText('SPIRAL AUDIO', 80, 180);
-    g.textAlign = 'right';
-    g.fillStyle = 'rgba(237,235,228,0.55)';
-    g.fillText('● NOW SPINNING', CLIP_W - 80, 180);
-
-    g.textAlign = 'left';
-    g.fillStyle = '#EDEBE4';
-    g.font = `600 76px 'IBM Plex Sans', system-ui, sans-serif`;
-    g.fillText(fitText(g, record.title || 'Untitled', CLIP_W - 160), 80, 1440);
-    if (by) {
-      g.fillStyle = 'rgba(237,235,228,0.65)';
-      g.font = `400 44px 'IBM Plex Sans', system-ui, sans-serif`;
-      g.fillText(fitText(g, by, CLIP_W - 160), 80, 1510);
-    }
-
-    const bx = 80, bw = CLIP_W - 160, barY = 1600;
-    g.fillStyle = 'rgba(237,235,228,0.18)';
-    g.fillRect(bx, barY, bw, 6);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.drawImage(still, 0, 0);
+    g.drawImage(disc, dx * OUT, dy * OUT);
+    g.setTransform(OUT, 0, 0, OUT, 0, 0);
     g.fillStyle = accent;
     g.fillRect(bx, barY, bw * Math.min(1, t / seconds), 6);
-    g.font = `400 30px 'IBM Plex Mono', ui-monospace, monospace`;
+    g.font = timeFont;
+    g.textAlign = 'left';
     g.fillStyle = 'rgba(237,235,228,0.65)';
     g.fillText(fmt(pos), bx, barY + 56);
-    g.textAlign = 'right';
-    g.fillText(fmt(duration), bx + bw, barY + 56);
-
-    g.textAlign = 'center';
-    g.fillStyle = 'rgba(237,235,228,0.8)';
-    g.font = `500 34px 'IBM Plex Mono', ui-monospace, monospace`;
-    g.fillText('SPIRALAUD.IO', CLIP_W / 2, 1810);
   };
   return { frame };
 }
@@ -154,9 +167,9 @@ export async function recordClip({ ctx, scene, canvas, groove, start, seconds, o
 
   if (ctx.state !== 'running') await ctx.resume();
   scene.frame(0);
-  const stream = new MediaStream([...canvas.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]);
+  const stream = new MediaStream([...canvas.captureStream(FPS).getVideoTracks(), ...dest.stream.getAudioTracks()]);
   const mimeType = pickMime();
-  const rec = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5e6, audioBitsPerSecond: 160e3 });
+  const rec = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4e6, audioBitsPerSecond: 160e3 });
   const chunks = [];
   rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
   const stopped = new Promise(res => { rec.onstop = res; });
@@ -169,15 +182,19 @@ export async function recordClip({ ctx, scene, canvas, groove, start, seconds, o
   gain.gain.linearRampToValueAtTime(0, t0 + seconds);
   src.start(t0);
 
-  let amp = 0;
+  // Draw at a steady 30fps off the audio clock (not every 60/120Hz display tick).
+  let amp = 0, lastFrame = -1;
   await new Promise(done => {
     const tick = () => {
       const t = Math.max(0, ctx.currentTime - t0);
+      const n = Math.floor(t * FPS);
+      if (n === lastFrame && t < seconds + 0.15) { requestAnimationFrame(tick); return; }
+      lastFrame = n;
       analyser.getByteFrequencyData(freq);
       analyser.getFloatTimeDomainData(wave);
       let peak = 0;
       for (let i = 0; i < wave.length; i++) { const a = Math.abs(wave[i]); if (a > peak) peak = a; }
-      amp = peak > amp ? 0.35 * peak + 0.65 * amp : 0.06 * peak + 0.94 * amp;
+      amp = peak > amp ? 0.55 * peak + 0.45 * amp : 0.12 * peak + 0.88 * amp;
       scene.frame(Math.min(t, seconds), amp, freq);
       onProgress?.(Math.min(1, t / seconds));
       if (t >= seconds + 0.15) return done();
