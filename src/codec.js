@@ -20,7 +20,8 @@ export function encodeToSVG(samples, opts = {}) {
   const totalSamples = samples.length;
   const duration = totalSamples / originalSr;
 
-  const targetSr = QUALITY_TARGET_SR[quality - 1];
+  // Top quality keeps the source rate up to 48 kHz: converting 48k→44.1k costs far more fidelity than it saves.
+  const targetSr = quality >= 5 ? Math.min(Math.max(QUALITY_TARGET_SR[4], originalSr), 48000) : QUALITY_TARGET_SR[quality - 1];
   const N = Math.min(Math.round(targetSr * duration), totalSamples);
   const decimationFactor = totalSamples / N;
   const effectiveSr = Math.round(N / duration);
@@ -28,10 +29,10 @@ export function encodeToSVG(samples, opts = {}) {
   // Pipeline: filter → decimate → soft-limit → RIAA pre-emphasis
   const runPipeline = (ch) => {
     const filtered = decimationFactor > 1 ? antiAliasFilter(ch, decimationFactor) : ch;
-    const dec = new Float32Array(N);
-    for (let i = 0; i < N; i++) {
-      dec[i] = clamp(filtered[Math.min(Math.floor(i * decimationFactor), totalSamples - 1)], -1, 1);
-    }
+    // Resample by interpolation. Picking the nearest source sample (the old way) jitters the timing
+    // by up to a sample at non-integer ratios like 48k→44.1k, which is loud distortion in the treble.
+    const dec = N === totalSamples ? Float32Array.from(filtered) : lanczos3Resample(filtered, N);
+    for (let i = 0; i < N; i++) dec[i] = clamp(dec[i], -1, 1);
     return riaaPreEmphasis(softLimit(dec, effectiveSr), effectiveSr, ENC_RIAA_CORNER_HZ);
   };
 
@@ -241,6 +242,7 @@ export function decodeFromSVGLegacy(svgString, defaults = {}) {
     Rin  = Math.max(12, rInCircle  + 8);
   }
 
+  const storedTurns = descEl ? parseFloat(((descEl.textContent || '').match(/turns=([\d.]+)/) || [])[1]) : NaN;
   let totalAngle = 0;
   let prevA = Math.atan2(coords[0].y - cy, coords[0].x - cx);
   for (let i = 1; i < N; i++) {
@@ -251,7 +253,7 @@ export function decodeFromSVGLegacy(svgString, defaults = {}) {
     totalAngle += d;
     prevA = a;
   }
-  const turns = Math.abs(totalAngle) / TAU;
+  const turns = storedTurns > 0 ? storedTurns : Math.abs(totalAngle) / TAU;
 
   const k = storedK > 0 ? storedK : (() => {
     const sampleWindow = Math.min(2000, Math.floor(N / 10));
@@ -412,6 +414,8 @@ export function parseGrooveHeader(header, defaults = {}) {
   };
   meta.usePreemph = !meta.useRiaa && /preemph=1/.test(desc);
   meta.lossless = /lossless=1/.test(desc);
+  // The encoder records the exact turn count; estimating it from geometry is off by enough to leak side into mid.
+  meta.storedTurns = num(/turns=([\d.]+)/, 0);
   if (meta.lossless) {
     meta.bits = num(/bits=(\d+)/, 16);
     meta.q = num(/\bq=(\d+)/, 2);
@@ -474,17 +478,20 @@ export function decodeFromCoords(xs, ys, meta) {
     groovePoints[i * 2] = px[i]; groovePoints[i * 2 + 1] = py[i];
   }
 
-  let totalAngle = 0;
-  let prevA = Math.atan2(py[0] - cy, px[0] - cx);
-  for (let i = 1; i < N; i++) {
-    const a = Math.atan2(py[i] - cy, px[i] - cx);
-    let d = a - prevA;
-    while (d > Math.PI) d -= TAU;
-    while (d < -Math.PI) d += TAU;
-    totalAngle += d;
-    prevA = a;
+  let turns = meta.storedTurns;
+  if (!(turns > 0)) {
+    let totalAngle = 0;
+    let prevA = Math.atan2(py[0] - cy, px[0] - cx);
+    for (let i = 1; i < N; i++) {
+      const a = Math.atan2(py[i] - cy, px[i] - cx);
+      let d = a - prevA;
+      while (d > Math.PI) d -= TAU;
+      while (d < -Math.PI) d += TAU;
+      totalAngle += d;
+      prevA = a;
+    }
+    turns = Math.abs(totalAngle) / TAU;
   }
-  const turns = Math.abs(totalAngle) / TAU;
 
   const k = storedK > 0 ? storedK : (() => {
     const sampleWindow = Math.min(2000, Math.floor(N / 10));

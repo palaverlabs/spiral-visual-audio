@@ -55,9 +55,9 @@ const STUDIO_HTML = `
       </div>
 
       <div class="speed-row">
-        <span class="ctrl-label">Speed</span>
-        <input type="range" id="speedSlider" min="0.25" max="2" value="1" step="0.25" class="ctrl-slider">
-        <span class="ctrl-value" id="speedValue">1&times;</span>
+        <!-- Turntable speed (pitch + tempo), hidden for now; playback reads it, so it stays at 1x. -->
+        <input type="range" id="speedSlider" min="0.25" max="2" value="1" step="0.25" hidden>
+        <span id="speedValue" hidden>1&times;</span>
         <button class="text-btn" id="loadSvgBtn">Load groove SVG</button>
       </div>
 
